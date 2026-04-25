@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer, TopBar } from "@/components/Chrome";
+import DocsSidebar from "./Sidebar";
 
 export const metadata: Metadata = {
   title: "Protocol",
@@ -110,47 +111,7 @@ export default function DocsPage() {
           <div className="grid grid-cols-12 gap-12">
             {/* Sidebar */}
             <aside className="col-span-3">
-              <div className="sticky top-8 space-y-6">
-                <div>
-                  <div className="eyebrow mb-3">Contents</div>
-                  <ul className="space-y-2 text-[13px]">
-                    <li>
-                      <a href="#overview" className="text-ink hover:text-accent2">
-                        Overview
-                      </a>
-                    </li>
-                    <li>
-                      <a href="#program" className="text-ink2 hover:text-accent2">
-                        Program design
-                      </a>
-                    </li>
-                    <li>
-                      <a href="#addresses" className="text-ink2 hover:text-accent2">
-                        Addresses
-                      </a>
-                    </li>
-                    <li>
-                      <a href="#decisions" className="text-ink2 hover:text-accent2">
-                        Design decisions
-                      </a>
-                    </li>
-                    <li>
-                      <a href="#run" className="text-ink2 hover:text-accent2">
-                        Run it locally
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-
-                <Link
-                  href={REPO}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2.5 ff-mono text-[10.5px] tracking-[0.18em] uppercase font-semibold px-4 h-9 bg-ink text-white hover:bg-ink2 transition-colors"
-                >
-                  GitHub
-                </Link>
-              </div>
+              <DocsSidebar repoUrl={REPO} />
             </aside>
 
             {/* Main */}
