@@ -7,9 +7,11 @@ export const metadata: Metadata = {
   description: "Run your own autonomous bidder against the live Sealdex auction.",
 };
 
-const REPO = "https://github.com/0xNoramiya/sealdex";
-const REPO_AGENTS_MD = `${REPO}/blob/main/AGENTS.md`;
-const REPO_BIDDER_README = `${REPO}/blob/main/agents/bidder/README.md`;
+// Link to the in-app routes that serve the canonical files from the
+// repo root (frontend/app/AGENTS.md/route.ts and bidder.md/route.ts).
+// Works on localhost AND on the deploy without depending on GitHub.
+const AGENTS_MD = "/AGENTS.md";
+const BIDDER_README = "/bidder.md";
 
 const WALLET_SAMPLE = `solana-keygen new --no-bip39-passphrase --outfile .keys/my-bidder.json
 solana airdrop 1 $(solana-keygen pubkey .keys/my-bidder.json) --url devnet`;
@@ -197,7 +199,7 @@ export default function AgentsPage() {
               </p>
             }
             code={CLONE_RUN}
-            cta={{ label: "Bidder README", href: REPO_BIDDER_README }}
+            cta={{ label: "Bidder README", href: BIDDER_README }}
           />
 
           {/* Path 02 — MCP */}
@@ -226,7 +228,7 @@ export default function AgentsPage() {
               </>
             }
             code={MCP_JSON}
-            cta={{ label: "AGENTS.md", href: REPO_AGENTS_MD }}
+            cta={{ label: "AGENTS.md", href: AGENTS_MD }}
           />
 
           {/* Path 03 — AGENTS.md */}
@@ -252,7 +254,7 @@ export default function AgentsPage() {
               </>
             }
             code={AGENTS_PROMPT}
-            cta={{ label: "AGENTS.md", href: REPO_AGENTS_MD }}
+            cta={{ label: "AGENTS.md", href: AGENTS_MD }}
           />
 
           <section className="mt-16 grid grid-cols-12 gap-10 border-t border-b border-rule py-10">
