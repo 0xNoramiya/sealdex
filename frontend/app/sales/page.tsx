@@ -66,8 +66,69 @@ const fmtCountdown = (totalMs: number) => {
   return `${h}:${m}:${s}`;
 };
 
+type LotMeta = {
+  title: string;
+  subtitle: string;
+  category: string;
+  year: number | null;
+  grade: number;
+  serial: string;
+  certNumber: string;
+  estimateLow: number;
+  estimateHigh: number;
+  lotIdLabel: string;
+};
+
+const DEMO_META: LotMeta = {
+  title: "Vintage Holo — Lot 001",
+  subtitle: "Trading card · Holographic foil · 1999",
+  category: "Vintage Holo",
+  year: 1999,
+  grade: 9,
+  serial: "001 / 250",
+  certNumber: "12847291",
+  estimateLow: 2400,
+  estimateHigh: 3400,
+  lotIdLabel: "001",
+};
+
+function metaFromLot(lot: LotResponse | null): LotMeta {
+  if (!lot?.lot) return DEMO_META;
+  const m: any = (lot.lot as any).lot_metadata ?? {};
+  const lotId: number | undefined = (lot.lot as any).lot_id;
+  const title: string = m.title ?? `Lot ${lotId ?? "—"}`;
+  const category: string = m.category ?? "Lot";
+  const year: number | null =
+    typeof m.year === "number" ? m.year : null;
+  const grade: number = typeof m.grade === "number" ? m.grade : 9;
+  const rawSerial: string = m.serial ?? "—";
+  const serial = rawSerial.includes("/")
+    ? rawSerial.replace("/", " / ")
+    : rawSerial;
+  const subtitleParts = ["Trading card"];
+  if (m.foil ?? /\bholo\b/i.test(category)) subtitleParts.push("Holographic foil");
+  if (year) subtitleParts.push(String(year));
+  return {
+    title,
+    subtitle: subtitleParts.join(" · "),
+    category,
+    year,
+    grade,
+    serial,
+    certNumber: m.cert_number ?? "—",
+    estimateLow: typeof m.estimate_low_usdc === "number" ? m.estimate_low_usdc : 0,
+    estimateHigh:
+      typeof m.estimate_high_usdc === "number" ? m.estimate_high_usdc : 0,
+    lotIdLabel: lotId ? String(lotId).padStart(3, "0") : "—",
+  };
+}
+
 /* ─── Lot illustration: tasteful holo card silhouette inside the slab ─── */
-function SlabArtwork() {
+function SlabArtwork({ meta }: { meta: LotMeta }) {
+  const ribbonText = meta.year
+    ? `${meta.category.toUpperCase()} · ${meta.year}`
+    : meta.category.toUpperCase();
+  const condition = `MINT ${meta.grade.toFixed(1)}`;
   return (
     <svg viewBox="0 0 240 220" className="absolute inset-0 w-full h-full">
       <defs>
@@ -125,7 +186,7 @@ function SlabArtwork() {
           letterSpacing="1.3"
           fill="#FFFFFF"
         >
-          VINTAGE HOLO · 1999
+          {ribbonText}
         </text>
 
         {/* artwork window */}
@@ -190,7 +251,7 @@ function SlabArtwork() {
           fontWeight="600"
           fill="#14171C"
         >
-          001 / 250
+          {meta.serial}
         </text>
         <text
           x="64"
@@ -211,14 +272,14 @@ function SlabArtwork() {
           fontWeight="600"
           fill="#14171C"
         >
-          MINT 9.0
+          {condition}
         </text>
       </g>
     </svg>
   );
 }
 
-function Slab() {
+function Slab({ meta }: { meta: LotMeta }) {
   return (
     <div className="relative mx-auto" style={{ width: 300 }}>
       <div className="slab-case rounded-[10px] border border-rule p-2">
@@ -232,7 +293,7 @@ function Slab() {
           }}
         >
           <span className="ff-mono text-[9px] tracking-[0.16em] text-white font-semibold whitespace-nowrap">
-            SEALDEX&nbsp;·&nbsp;CERT&nbsp;#12847291&nbsp;·&nbsp;GRADE&nbsp;9
+            SEALDEX&nbsp;·&nbsp;CERT&nbsp;#{meta.certNumber}&nbsp;·&nbsp;GRADE&nbsp;{meta.grade}
           </span>
         </div>
 
@@ -241,7 +302,7 @@ function Slab() {
           className="mt-2 rounded-[4px] overflow-hidden relative border border-black/5 slab-window"
           style={{ aspectRatio: "0.82 / 1" }}
         >
-          <SlabArtwork />
+          <SlabArtwork meta={meta} />
         </div>
 
         {/* Bottom plate */}
@@ -531,6 +592,8 @@ export default function Page() {
   const winner =
     displayBids.find((b) => b.id === winnerId) ?? displayBids[0];
 
+  const meta: LotMeta = metaFromLot(lot);
+
   return (
     <div className="min-h-screen flex flex-col relative paper-bg">
       <TopBar active="sales" />
@@ -541,9 +604,9 @@ export default function Page() {
           <div className="flex items-center gap-3 text-dim">
             <span>Sales</span>
             <span className="text-muted">/</span>
-            <span>Trading Cards · Vintage Holo Series</span>
+            <span>Trading Cards · {meta.category} Series</span>
             <span className="text-muted">/</span>
-            <span className="text-ink">Lot 001</span>
+            <span className="text-ink">Lot {meta.lotIdLabel}</span>
           </div>
           <div className="flex items-center gap-5 text-dim">
             <span className="ff-mono text-[11px]">
@@ -564,14 +627,16 @@ export default function Page() {
         <div className="max-w-[1200px] mx-auto px-8 py-12 grid grid-cols-12 gap-12">
           {/* ── Left: Slab + caption ── */}
           <section className="col-span-5 flex flex-col items-center">
-            <div className="eyebrow mb-5 self-start">Lot 001 · Sealed</div>
-            <Slab />
+            <div className="eyebrow mb-5 self-start">
+              Lot {meta.lotIdLabel} · Sealed
+            </div>
+            <Slab meta={meta} />
             <div className="mt-7 w-full text-center">
               <div className="ff-serif text-[28px] leading-tight text-ink">
-                Vintage Holo<span className="text-muted"> — </span>Lot 001
+                {meta.title}
               </div>
               <div className="mt-2 text-[13px] text-dim">
-                Trading card · Holographic foil · 1999
+                {meta.subtitle}
                 <br />
                 Authenticated &amp; encapsulated by Sealdex Cert.
               </div>
@@ -582,7 +647,9 @@ export default function Page() {
               <div className="px-3 py-3 border-r border-rule">
                 <div className="eyebrow mb-1">Estimate</div>
                 <div className="ff-serif text-[15px] text-ink tab-nums">
-                  $2,400 — $3,400
+                  {meta.estimateLow > 0 && meta.estimateHigh > 0
+                    ? `$${meta.estimateLow.toLocaleString()} — $${meta.estimateHigh.toLocaleString()}`
+                    : "—"}
                 </div>
               </div>
               <div className="px-3 py-3 border-r border-rule">
