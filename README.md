@@ -115,7 +115,8 @@ sealdex/
 ```
 
 Component-level docs:
-- [`agents/bidder/README.md`](./agents/bidder/README.md) — third-party bidder deployment
+- [`AGENTS.md`](./AGENTS.md) — point any agent runtime (Claude Code, Cursor, Codex, custom MCP clients) at Sealdex as a bidder
+- [`agents/bidder/README.md`](./agents/bidder/README.md) — third-party standalone bidder deployment
 - [`CLAUDE.md`](./CLAUDE.md) — internal architecture and decision log
 
 ---

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "mcpServers": {
+    "sealdex": {
+      "command": "node",
+      "args": ["--import", "tsx", "mcp-server/src/index.ts"],
+      "env": {}
+    }
+  }
+}
