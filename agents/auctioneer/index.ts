@@ -12,10 +12,19 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
+const STATE_DIR = process.env.SEALDEX_STATE_DIR
+  ? resolve(process.env.SEALDEX_STATE_DIR)
+  : resolve(ROOT, "scripts");
+const INVENTORY_PATH =
+  process.env.SEALDEX_INVENTORY_PATH ||
+  resolve(ROOT, "scripts/seed-inventory.json");
 const SELLER =
   process.env.SEALDEX_SELLER_KEYPAIR || resolve(ROOT, ".keys/seller.json");
 const PAYMENT_MINT =
   process.env.SEALDEX_PAYMENT_MINT || "11111111111111111111111111111111";
+const KEYS_DIR = process.env.SEALDEX_KEYS_DIR
+  ? resolve(process.env.SEALDEX_KEYS_DIR)
+  : resolve(ROOT, ".keys");
 
 interface Lot {
   lot_id: number;
@@ -32,9 +41,8 @@ interface RegistryEntry {
 }
 
 async function main() {
-  const inventoryPath = resolve(ROOT, "scripts/seed-inventory.json");
-  const registryPath = resolve(ROOT, "scripts/auction-registry.json");
-  const inventory: Lot[] = JSON.parse(readFileSync(inventoryPath, "utf8"));
+  const registryPath = resolve(STATE_DIR, "auction-registry.json");
+  const inventory: Lot[] = JSON.parse(readFileSync(INVENTORY_PATH, "utf8"));
 
   // Load any pre-existing registry so we can append, not overwrite.
   let registry: RegistryEntry[] = [];
@@ -47,7 +55,7 @@ async function main() {
   // Add bidder pubkeys (if their keypairs exist) to the auction permission so
   // they can read the auction PDA via TEE auth.
   const bidderPaths = ["bidder1.json", "bidder2.json"]
-    .map((f) => resolve(ROOT, ".keys", f));
+    .map((f) => resolve(KEYS_DIR, f));
   const permittedMembers: string[] = [];
   for (const p of bidderPaths) {
     try {

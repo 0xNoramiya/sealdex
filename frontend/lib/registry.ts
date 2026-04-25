@@ -1,8 +1,15 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+/**
+ * Where bidder/auctioneer state lives. In local dev that's <repo>/scripts;
+ * on Fly.io it's the persistent volume mount (e.g. /data/state). The agents
+ * already respect SEALDEX_STATE_DIR — the frontend has to match.
+ */
 const REPO_ROOT = path.resolve(process.cwd(), "..");
-const SCRIPTS_DIR = path.join(REPO_ROOT, "scripts");
+const SCRIPTS_DIR = process.env.SEALDEX_STATE_DIR
+  ? path.resolve(process.env.SEALDEX_STATE_DIR)
+  : path.join(REPO_ROOT, "scripts");
 
 export interface RegistryEntry {
   auctionId: string;
@@ -87,13 +94,29 @@ export function readBidderStream(
     .filter((x): x is BidderStreamEntry => x !== null);
 }
 
-/** Pretty-print the bidder name/pubkey/tag from the stream's start record. */
+/** Pretty-print the bidder name/pubkey/tag from the stream's start record.
+ *  bidder_start is the FIRST event in the stream — read the head rather than
+ *  the tail, otherwise long-running bidders push the start event out of the
+ *  window. */
 export function readBidderIdentity(
   agentSlug: string
 ): { name: string; pubkey: string; tag: string } | null {
-  const stream = readBidderStream(agentSlug, 10);
-  const start = stream.find((e) => e.kind === "bidder_start");
-  if (!start) return null;
+  const file = path.join(SCRIPTS_DIR, `bidder-${agentSlug}-stream.jsonl`);
+  let raw: string;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+  const firstLine = raw.split("\n").find((l) => l.trim().length > 0);
+  if (!firstLine) return null;
+  let start: BidderStreamEntry;
+  try {
+    start = JSON.parse(firstLine) as BidderStreamEntry;
+  } catch {
+    return null;
+  }
+  if (start.kind !== "bidder_start") return null;
   const name = (start as any).name ?? agentSlug;
   const pubkey = (start as any).pubkey ?? "";
   const tag = name

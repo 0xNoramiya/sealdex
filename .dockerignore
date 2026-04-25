@@ -1,0 +1,34 @@
+# Secrets — never copy into the image
+.env
+.env.*
+.keys/
+
+# Build artifacts (rebuilt inside the image)
+**/node_modules
+**/.next
+**/dist
+**/build
+
+# Anchor/Rust artifacts (we ship only target/idl)
+target/debug
+target/release
+target/deploy
+target/sbf-solana-solana
+.anchor/
+test-ledger/
+
+# Runtime state (persistent volume on Fly)
+scripts/auction-registry.json
+scripts/bidder-*-state.json
+scripts/bidder-*-stream.jsonl
+
+# Editor / OS / VCS noise
+.git/
+.gitignore
+.dockerignore
+.vscode/
+.idea/
+.DS_Store
+**/*.log
+**/*.tsbuildinfo
+**/yarn-error.log

@@ -16,11 +16,9 @@ const BID_SEED = Buffer.from("bid");
 let cachedCoder: BorshAccountsCoder | null = null;
 function coder(): BorshAccountsCoder {
   if (cachedCoder) return cachedCoder;
-  const idlPath = path.resolve(
-    process.cwd(),
-    "..",
-    "target/idl/sealdex_auction.json"
-  );
+  const idlPath =
+    process.env.SEALDEX_IDL_PATH ||
+    path.resolve(process.cwd(), "..", "target/idl/sealdex_auction.json");
   const idl = JSON.parse(readFileSync(idlPath, "utf8")) as Idl;
   cachedCoder = new BorshAccountsCoder(idl);
   return cachedCoder;

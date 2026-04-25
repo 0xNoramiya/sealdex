@@ -7,9 +7,10 @@
 keypair*.json
 target/deploy/*-keypair.json
 
-# Anchor / Rust
-target/
-**/target/
+# Anchor / Rust — ignore everything in target/ except the public IDL so
+# the frontend / agents work without the Solana toolchain installed.
+target/*
+!target/idl/
 .anchor/
 test-ledger/
 Cargo.lock

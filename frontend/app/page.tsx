@@ -1,801 +1,343 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import type { LotResponse } from "./api/lot/route";
+import { Footer, TopBar } from "@/components/Chrome";
+import { readRegistry, readBidderStates } from "@/lib/registry";
 
-/* ─── Mock bids (used only when no live data is available) ─── */
-type Bid = {
-  id: string;
-  name: string;
-  pubkey: string;
-  amount: number;
-  kind: string;
-  tag: string;
-};
+export const dynamic = "force-dynamic";
 
-const BIDS: Bid[] = [
-  {
-    id: "a",
-    name: "Bidder Alpha",
-    pubkey: "0x4f…a72c",
-    amount: 2890,
-    kind: "Autonomous Agent",
-    tag: "A",
-  },
-  {
-    id: "b",
-    name: "Bidder Beta",
-    pubkey: "0x91…c13e",
-    amount: 3150,
-    kind: "Autonomous Agent",
-    tag: "B",
-  },
-  {
-    id: "g",
-    name: "Bidder Gamma",
-    pubkey: "0xb2…08fd",
-    amount: 2640,
-    kind: "Autonomous Agent",
-    tag: "Γ",
-  },
-];
-const WINNER_ID = "b";
+const REPO_URL = "https://github.com/0xNoramiya/sealdex";
 
-const REASONING = [
-  {
-    id: "a",
-    text: "alpha — vintage holo · grade 9 meets minimum · bidding within budget",
-  },
-  {
-    id: "b",
-    text: "beta — comp range $2.8k–3.4k · reserving capacity · placing competitive bid",
-  },
-  {
-    id: "g",
-    text: "gamma — aggressive want-list match · max valuation $4k · headroom maintained",
-  },
-];
-
-const fmtCountdown = (totalMs: number) => {
-  const total = Math.max(0, Math.ceil(totalMs / 1000));
-  const h = String(Math.floor(total / 3600)).padStart(2, "0");
-  const m = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
-  const s = String(total % 60).padStart(2, "0");
-  return `${h}:${m}:${s}`;
-};
-
-/* ─── Lot illustration: tasteful holo card silhouette inside the slab ─── */
-function SlabArtwork() {
-  return (
-    <svg viewBox="0 0 240 220" className="absolute inset-0 w-full h-full">
-      <defs>
-        <linearGradient id="cardG" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#FFFFFF" />
-          <stop offset="1" stopColor="#F1E9D6" />
-        </linearGradient>
-        <linearGradient id="cardEdge" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#D8C9A6" />
-          <stop offset="1" stopColor="#A48A53" />
-        </linearGradient>
-        <radialGradient id="holoSheen" cx="0.3" cy="0.25" r="0.9">
-          <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.9" />
-          <stop offset="0.4" stopColor="#FFFFFF" stopOpacity="0.0" />
-          <stop offset="1" stopColor="#000000" stopOpacity="0.0" />
-        </radialGradient>
-        <linearGradient id="holoBars" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#F2D9A0" />
-          <stop offset="0.25" stopColor="#E5C8E2" />
-          <stop offset="0.5" stopColor="#BFE0E8" />
-          <stop offset="0.75" stopColor="#D7E6C6" />
-          <stop offset="1" stopColor="#F0CDB7" />
-        </linearGradient>
-      </defs>
-
-      {/* Inner trading card */}
-      <g transform="translate(60 28)">
-        <rect
-          x="0"
-          y="0"
-          width="120"
-          height="164"
-          rx="6"
-          fill="url(#cardG)"
-          stroke="url(#cardEdge)"
-          strokeWidth="1.5"
-        />
-        {/* top label */}
-        <rect
-          x="8"
-          y="8"
-          width="104"
-          height="14"
-          rx="2"
-          fill="#1E8B66"
-          opacity="0.85"
-        />
-        <text
-          x="60"
-          y="18"
-          textAnchor="middle"
-          fontFamily="Inter, sans-serif"
-          fontSize="7"
-          fontWeight="700"
-          letterSpacing="1.3"
-          fill="#FFFFFF"
-        >
-          VINTAGE HOLO · 1999
-        </text>
-
-        {/* artwork window */}
-        <rect
-          x="8"
-          y="28"
-          width="104"
-          height="98"
-          rx="3"
-          fill="url(#holoBars)"
-        />
-        {/* monogram glyph instead of any IP character */}
-        <g transform="translate(60 78)">
-          <circle r="28" fill="#FFFFFF" opacity="0.6" />
-          <text
-            textAnchor="middle"
-            dominantBaseline="central"
-            y="2"
-            fontFamily="Fraunces, serif"
-            fontWeight="500"
-            fontSize="40"
-            fill="#1E8B66"
-          >
-            S
-          </text>
-        </g>
-        {/* sheen overlay */}
-        <rect
-          x="8"
-          y="28"
-          width="104"
-          height="98"
-          rx="3"
-          fill="url(#holoSheen)"
-        />
-
-        {/* card stats */}
-        <line
-          x1="8"
-          y1="134"
-          x2="112"
-          y2="134"
-          stroke="#D8C9A6"
-          strokeWidth="0.8"
-        />
-        <text
-          x="8"
-          y="146"
-          fontFamily="Inter"
-          fontSize="6"
-          fontWeight="600"
-          fill="#5A6070"
-          letterSpacing="0.8"
-        >
-          SERIAL
-        </text>
-        <text
-          x="8"
-          y="156"
-          fontFamily="JetBrains Mono"
-          fontSize="7"
-          fontWeight="600"
-          fill="#14171C"
-        >
-          001 / 250
-        </text>
-        <text
-          x="64"
-          y="146"
-          fontFamily="Inter"
-          fontSize="6"
-          fontWeight="600"
-          fill="#5A6070"
-          letterSpacing="0.8"
-        >
-          CONDITION
-        </text>
-        <text
-          x="64"
-          y="156"
-          fontFamily="JetBrains Mono"
-          fontSize="7"
-          fontWeight="600"
-          fill="#14171C"
-        >
-          MINT 9.0
-        </text>
-      </g>
-    </svg>
-  );
-}
-
-function Slab() {
-  return (
-    <div className="relative mx-auto" style={{ width: 300 }}>
-      <div className="slab-case rounded-[10px] border border-rule p-2">
-        {/* Cert label */}
-        <div
-          className="h-[26px] rounded-[4px] flex items-center justify-center px-3"
-          style={{
-            background: "linear-gradient(180deg, #B0464A 0%, #8E3034 100%)",
-            boxShadow:
-              "inset 0 -1px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.18)",
-          }}
-        >
-          <span className="ff-mono text-[9px] tracking-[0.16em] text-white font-semibold whitespace-nowrap">
-            SEALDEX&nbsp;·&nbsp;CERT&nbsp;#12847291&nbsp;·&nbsp;GRADE&nbsp;9
-          </span>
-        </div>
-
-        {/* Window */}
-        <div
-          className="mt-2 rounded-[4px] overflow-hidden relative border border-black/5 slab-window"
-          style={{ aspectRatio: "0.82 / 1" }}
-        >
-          <SlabArtwork />
-        </div>
-
-        {/* Bottom plate */}
-        <div
-          className="mt-2 h-[16px] rounded-[3px] flex items-center justify-between px-2"
-          style={{ background: "#F4F2EC", border: "1px solid #E5E3DD" }}
-        >
-          <span className="ff-mono text-[8px] tracking-[0.12em] text-dim">
-            PSA-EQ
-          </span>
-          <span className="ff-mono text-[8px] tracking-[0.12em] text-dim">
-            SEALED · TEE
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BidderMark({
-  tag,
-  isWinner,
-  revealed,
+function StatTile({
+  label,
+  value,
+  sub,
 }: {
-  tag: string;
-  isWinner: boolean;
-  revealed: boolean;
+  label: string;
+  value: string;
+  sub?: string;
 }) {
   return (
-    <div
-      className="shrink-0 w-9 h-9 flex items-center justify-center"
-      style={{
-        background: isWinner && revealed ? "#14171C" : "#FFFFFF",
-        color: isWinner && revealed ? "#FFFFFF" : "#14171C",
-        border:
-          isWinner && revealed ? "1px solid #14171C" : "1px solid #E5E3DD",
-        borderRadius: 2,
-        fontFamily: "var(--font-fraunces), serif",
-        fontWeight: 500,
-        fontSize: 16,
-        letterSpacing: "0.02em",
-      }}
-    >
-      {tag}
+    <div className="px-5 py-5 border-r border-rule last:border-r-0">
+      <div className="eyebrow mb-1.5">{label}</div>
+      <div className="ff-serif text-[26px] tab-nums leading-none text-ink">
+        {value}
+      </div>
+      {sub && (
+        <div className="ff-mono text-[10.5px] text-dim mt-2">{sub}</div>
+      )}
     </div>
   );
 }
 
-function BidRow({
-  bid,
-  revealed,
-  flipped,
-  isWinner,
+function FlowStep({
+  index,
+  title,
+  body,
 }: {
-  bid: Bid;
-  revealed: boolean;
-  flipped: boolean;
-  isWinner: boolean;
+  index: string;
+  title: string;
+  body: string;
 }) {
   return (
-    <div
-      className={`bid-row flex items-center gap-4 px-5 py-4 ${
-        isWinner && revealed ? "winner" : ""
-      }`}
-    >
-      <BidderMark tag={bid.tag} isWinner={isWinner} revealed={revealed} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-3">
-          <span className="ff-serif text-[16px] font-medium text-ink leading-none">
-            {bid.name}
-          </span>
-          {isWinner && revealed && (
-            <span className="ff-mono text-[9.5px] tracking-[0.18em] uppercase text-accent font-semibold">
-              Winning bid
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3 mt-1.5">
-          <span className="ff-mono text-[11px] text-muted">{bid.pubkey}</span>
-          <span className="text-muted">·</span>
-          <span className="text-[11px] text-dim">{bid.kind}</span>
-          <span className="text-muted">·</span>
-          <span className="ff-mono text-[10px] tracking-[0.06em] text-dim">
-            sealed&nbsp;via&nbsp;Private&nbsp;Ephemeral&nbsp;Rollup
-          </span>
+    <div className="grid grid-cols-12 gap-6">
+      <div className="col-span-1">
+        <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold">
+          {index}
         </div>
       </div>
-      <div className="flip-wrap">
-        <div className={`flip ${flipped ? "flipped" : ""}`}>
-          <div className="front">
-            <span className="ff-mono text-[14px] text-muted tab-nums tracking-wider">
-              $ ••• ,•••
-            </span>
-          </div>
-          <div className="back">
-            <span
-              className={`ff-serif text-[20px] tab-nums leading-none ${
-                isWinner ? "text-accent2 font-medium" : "text-ink"
-              }`}
-            >
-              ${bid.amount.toLocaleString("en-US")}
-              <span className="ff-mono text-[10px] ml-1.5 tracking-[0.14em] text-dim font-normal">
-                USDC
-              </span>
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TickerRow({ lines }: { lines: { id: string; text: string }[] }) {
-  const safeLines = lines.length > 0 ? lines : REASONING;
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    setIdx((i) => Math.min(i, Math.max(0, safeLines.length - 1)));
-    const t = setInterval(
-      () => setIdx((i) => (i + 1) % safeLines.length),
-      2200,
-    );
-    return () => clearInterval(t);
-  }, [safeLines.length]);
-  const line = safeLines[Math.min(idx, safeLines.length - 1)];
-  return (
-    <div className="flex items-center gap-4 px-5 h-10 border-t border-rule2 bg-paper/60">
-      <span className="eyebrow eyebrow-ink shrink-0">Agent reasoning</span>
-      <span className="text-muted">·</span>
-      <div className="flex-1 min-w-0 h-5 flex items-center overflow-hidden">
-        <span
-          key={(line?.id ?? "x") + idx}
-          className="ticker-line ff-mono text-[11px] text-dim truncate"
-        >
-          {line?.text ?? ""}
-        </span>
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {safeLines.slice(0, 6).map((r, i) => (
-          <span
-            key={r.id}
-            className="w-1 h-1 rounded-full transition-colors"
-            style={{
-              background:
-                i === idx % Math.min(safeLines.length, 6)
-                  ? "#1E8B66"
-                  : "#CFCEC7",
-            }}
-          />
-        ))}
+      <div className="col-span-11">
+        <h3 className="ff-serif text-[18px] text-ink leading-tight">{title}</h3>
+        <p className="mt-2 text-[13.5px] leading-[1.7] text-ink2">{body}</p>
       </div>
     </div>
   );
 }
 
 export default function Page() {
-  const startMs = 8000;
-  const [lot, setLot] = useState<LotResponse | null>(null);
-  const [anchor, setAnchor] = useState<{
-    cluster: number;
-    local: number;
-  } | null>(null);
-  const [, forceTick] = useState(0);
-  const [remaining, setRemaining] = useState(startMs);
-  const [revealed, setRevealed] = useState(false);
-  const [flipped, setFlipped] = useState<Record<string, boolean>>({});
-  const [revealing, setRevealing] = useState(false);
-  const [showSettlement, setShowSettlement] = useState(false);
-  const startedAt = useRef<number | null>(null);
-
-  /* Poll /api/lot for live program data. Cluster-time anchor is captured
-   * on every successful response so the countdown is independent of WSL clock skew. */
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const r = await fetch("/api/lot", { cache: "no-store" });
-        if (!r.ok || cancelled) return;
-        const data: LotResponse = await r.json();
-        if (cancelled) return;
-        setLot(data);
-        setAnchor({ cluster: data.clusterUnix, local: Date.now() });
-      } catch {
-        /* ignore — keep last good state */
-      }
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
-
-  /* Local 200ms tick advances the cluster-anchored countdown smoothly between fetches. */
-  useEffect(() => {
-    const t = setInterval(() => forceTick((x) => x + 1), 200);
-    return () => clearInterval(t);
-  }, []);
-
-  const hasLive = !!lot?.hasLiveData;
-
-  /* Mock countdown only runs when no live data is available. */
-  useEffect(() => {
-    if (hasLive) return;
-    startedAt.current = Date.now();
-    const tick = setInterval(() => {
-      const elapsed = Date.now() - (startedAt.current ?? Date.now());
-      const rem = Math.max(0, startMs - elapsed);
-      setRemaining(rem);
-      if (rem <= 0) clearInterval(tick);
-    }, 50);
-    return () => clearInterval(tick);
-  }, [hasLive]);
-
-  const liveRemainingMs = (() => {
-    if (!hasLive || !lot?.endTimeUnix || !anchor) return null;
-    const nowCluster =
-      anchor.cluster + (Date.now() - anchor.local) / 1000;
-    return Math.max(0, (lot.endTimeUnix - nowCluster) * 1000);
-  })();
-
-  const effectiveRemaining = liveRemainingMs ?? remaining;
-
-  const displayBids: Bid[] =
-    hasLive && lot && lot.bidders.length > 0
-      ? lot.bidders.map((b) => ({
-          id: b.agentSlug,
-          name: b.name,
-          pubkey: b.pubkey,
-          amount: b.amountUsdc ?? 0,
-          kind: "Autonomous Agent",
-          tag: b.tag,
-        }))
-      : BIDS;
-
-  const winnerId = hasLive
-    ? lot?.bidders.find((b) => b.isWinner)?.agentSlug ?? null
-    : WINNER_ID;
-
-  const displayReasoning =
-    hasLive && lot && lot.reasoning.length > 0
-      ? lot.reasoning
-          .slice(-12)
-          .map((e, i) => ({
-            id: `${e.agentSlug}-${e.ts}-${i}`,
-            text: (
-              (e as any).reasoning ??
-              (e as any).text ??
-              ""
-            )
-              .toString()
-              .replace(/\s+/g, " ")
-              .trim(),
-          }))
-          .filter((e) => e.text.length > 0)
-      : REASONING;
-
-  const settledLive = hasLive && lot?.status === "Settled";
-  const canReveal =
-    !revealing && !revealed && (effectiveRemaining <= 0 || settledLive);
-  const last3 = effectiveRemaining > 0 && effectiveRemaining <= 3000;
-
-  const onReveal = () => {
-    if (revealing || revealed) return;
-    setRevealing(true);
-    displayBids.forEach((b, i) => {
-      setTimeout(
-        () => setFlipped((p) => ({ ...p, [b.id]: true })),
-        i * 220,
-      );
-    });
-    const lastFlipDone =
-      Math.max(0, (displayBids.length - 1) * 220) + 360;
-    setTimeout(() => setRevealed(true), lastFlipDone);
-    setTimeout(() => setShowSettlement(true), lastFlipDone + 600);
-  };
-
-  /* Auto-trigger the reveal sequence the moment the live auction
-   * transitions to Settled. */
-  useEffect(() => {
-    if (settledLive && !revealing && !revealed) {
-      onReveal();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settledLive]);
-
-  const winner =
-    displayBids.find((b) => b.id === winnerId) ?? displayBids[0];
+  const registry = readRegistry();
+  const bidders = readBidderStates();
+  const totalLots = registry.length;
+  const distinctBidders = bidders.length;
 
   return (
     <div className="min-h-screen flex flex-col relative paper-bg">
-      {/* ─── Top bar ─── */}
-      <header className="border-b border-rule bg-paper">
-        <div className="max-w-[1200px] mx-auto px-8 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <rect
-                x="1.5"
-                y="1.5"
-                width="19"
-                height="19"
-                rx="2"
-                stroke="#14171C"
-                strokeWidth="1.2"
-              />
-              <path d="M6 11 L11 6 L16 11 L11 16 Z" fill="#14171C" />
-            </svg>
-            <span className="ff-serif text-[18px] font-medium tracking-[-0.01em] text-ink">
-              Sealdex
-            </span>
-            <span className="ff-mono text-[9.5px] font-semibold tracking-[0.22em] uppercase px-2 py-1 text-dim border border-rule">
-              Devnet
-            </span>
-          </div>
+      <TopBar active="home" />
 
-          <nav className="hidden md:flex items-center gap-8 text-[13px] text-dim">
-            <span className="text-ink font-medium">Sales</span>
-            <span>Lots</span>
-            <Link href="/agents" className="hover:text-ink">
-              Agents
-            </Link>
-            <span>Settlement</span>
-            <span>Docs</span>
-          </nav>
-
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent pulse-dot" />
-              <span className="text-[12px] text-dim">TEE Verified</span>
+      {/* Hero */}
+      <section className="border-b border-rule bg-paper">
+        <div className="max-w-[1200px] mx-auto px-8 py-20 grid grid-cols-12 gap-12">
+          <div className="col-span-7">
+            <div className="eyebrow mb-5">
+              Trustless · Sealed-bid · Agent-native
             </div>
-            <span className="ff-mono text-[11px] text-dim">
-              enclave://us-east-1.sealdex
-            </span>
-          </div>
-        </div>
-      </header>
+            <h1 className="ff-serif text-[60px] leading-[1.02] tracking-[-0.015em] text-ink">
+              Auctions where AI agents can bid honestly.
+            </h1>
+            <p className="mt-7 ff-serif text-[18px] leading-[1.7] text-ink2 max-w-[640px]">
+              Public bidding leaks an agent&apos;s max valuation to anyone
+              scraping the chain. Sealdex hides bid amounts inside Intel TDX
+              hardware until settlement — so autonomous agents can bid their
+              true willingness-to-pay without being front-run.
+            </p>
+            <p className="mt-4 text-[14px] leading-[1.7] text-dim max-w-[640px]">
+              Built on Solana and MagicBlock&apos;s Private Ephemeral Rollups.
+              The auctioneer cannot peek. The validator cannot peek. Losing
+              bids are discarded without disclosure.
+            </p>
 
-      {/* ─── Sale breadcrumb / sale band ─── */}
-      <div className="border-b border-rule bg-paper">
-        <div className="max-w-[1200px] mx-auto px-8 h-10 flex items-center justify-between text-[12px]">
-          <div className="flex items-center gap-3 text-dim">
-            <span>Sales</span>
-            <span className="text-muted">/</span>
-            <span>Trading Cards · Vintage Holo Series</span>
-            <span className="text-muted">/</span>
-            <span className="text-ink">Lot 001</span>
-          </div>
-          <div className="flex items-center gap-5 text-dim">
-            <span className="ff-mono text-[11px]">
-              {hasLive && lot?.auctionId
-                ? `Sale #A-${lot.auctionId}`
-                : "Sale #A-2026-0418"}
-            </span>
-            <span className="text-muted">·</span>
-            <span>Sealed-bid · Single-shot</span>
-            <span className="text-muted">·</span>
-            <span className="text-ink">{displayBids.length} bidders</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Main ─── */}
-      <main className="flex-1">
-        <div className="max-w-[1200px] mx-auto px-8 py-12 grid grid-cols-12 gap-12">
-          {/* ── Left: Slab + caption ── */}
-          <section className="col-span-5 flex flex-col items-center">
-            <div className="eyebrow mb-5 self-start">Lot 001 · Sealed</div>
-            <Slab />
-            <div className="mt-7 w-full text-center">
-              <div className="ff-serif text-[28px] leading-tight text-ink">
-                Vintage Holo<span className="text-muted"> — </span>Lot 001
-              </div>
-              <div className="mt-2 text-[13px] text-dim">
-                Trading card · Holographic foil · 1999
-                <br />
-                Authenticated &amp; encapsulated by Sealdex Cert.
-              </div>
-            </div>
-
-            {/* Provenance strip */}
-            <div className="mt-6 w-full grid grid-cols-3 border-t border-b border-rule">
-              <div className="px-3 py-3 border-r border-rule">
-                <div className="eyebrow mb-1">Estimate</div>
-                <div className="ff-serif text-[15px] text-ink tab-nums">
-                  $2,400 — $3,400
-                </div>
-              </div>
-              <div className="px-3 py-3 border-r border-rule">
-                <div className="eyebrow mb-1">Reserve</div>
-                <div className="ff-serif text-[15px] text-ink tab-nums">Met</div>
-              </div>
-              <div className="px-3 py-3">
-                <div className="eyebrow mb-1">Settlement</div>
-                <div className="ff-serif text-[15px] text-ink">USDC · TEE</div>
-              </div>
-            </div>
-          </section>
-
-          {/* ── Right: Reveal panel ── */}
-          <section className="col-span-7 flex flex-col">
-            {/* Status header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="eyebrow">Sealed-bid auction</span>
-                <span className="text-muted">·</span>
-                <span className="text-[12px] text-dim">
-                  Settles in TEE on reveal
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent pulse-dot" />
-                <span className="ff-mono text-[10.5px] tracking-[0.16em] uppercase text-accent2 font-semibold">
-                  {revealed
-                    ? "Revealed"
-                    : revealing
-                      ? "Revealing"
-                      : settledLive
-                        ? "Awaiting reveal"
-                        : effectiveRemaining <= 0
-                          ? "Awaiting settlement"
-                          : "Sealed"}
-                </span>
-              </div>
-            </div>
-
-            {/* Countdown plinth */}
-            <div className="plinth mt-4 mb-6 py-5 flex items-center justify-between">
-              <div>
-                <div className="eyebrow mb-1">Reveal in</div>
-                <div
-                  className={`ff-serif tab-nums text-[44px] leading-none transition-colors ${
-                    last3 || effectiveRemaining === 0
-                      ? "text-accent2"
-                      : "text-ink"
-                  }`}
-                >
-                  {fmtCountdown(effectiveRemaining)}
-                </div>
-              </div>
-              <button
-                onClick={onReveal}
-                disabled={!canReveal}
-                className={`group inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-5 h-10 transition-colors ${
-                  revealed ? "bg-accentBg text-accent2 cursor-default" : ""
-                } ${
-                  revealing && !revealed
-                    ? "bg-accentBg text-accent2 cursor-wait"
-                    : ""
-                } ${canReveal ? "bg-ink text-white hover:bg-ink2" : ""} ${
-                  !canReveal && !revealing && !revealed
-                    ? "bg-paper text-muted border border-rule cursor-not-allowed"
-                    : ""
-                }`}
+            <div className="mt-10 flex items-center gap-3">
+              <Link
+                href="/sales"
+                className="inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-6 h-11 bg-ink text-white hover:bg-ink2 transition-colors"
               >
-                {(revealed || revealing) && (
-                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                    <path
-                      d="M2.5 6.3L5 8.5L9.5 3.5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-                {revealed ? "Revealed" : revealing ? "Revealing" : "Reveal Bids"}
-                {!revealed && !revealing && (
-                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                    <path
-                      d="M3 6h6M7 3l3 3-3 3"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
+                View live auction
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M3 6h6M7 3l3 3-3 3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </Link>
+              <Link
+                href="/agents"
+                className="inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-6 h-11 bg-paper text-ink border border-rule hover:border-ink transition-colors"
+              >
+                Run your own bidder
+              </Link>
             </div>
+          </div>
 
-            {/* Sealed bids — table */}
-            <div className="bg-card border border-rule">
-              <div className="flex items-center justify-between px-5 h-10 border-b border-rule bg-paper">
-                <span className="eyebrow eyebrow-ink">Sealed bids</span>
-                <div className="flex items-center gap-4 text-[10.5px] tracking-[0.14em] uppercase text-muted font-semibold">
-                  <span>Bidder</span>
-                  <span className="w-[150px] text-right">Amount</span>
+          {/* Visual on right — simplified slab silhouette */}
+          <div className="col-span-5 flex items-center justify-center">
+            <div className="relative w-full max-w-[320px] aspect-[0.78/1]">
+              <div
+                className="absolute inset-0 slab-case rounded-[10px] border border-rule p-2"
+              >
+                <div
+                  className="h-[26px] rounded-[4px] flex items-center justify-center px-3"
+                  style={{
+                    background:
+                      "linear-gradient(180deg, #B0464A 0%, #8E3034 100%)",
+                  }}
+                >
+                  <span className="ff-mono text-[9px] tracking-[0.16em] text-white font-semibold">
+                    SEALDEX&nbsp;·&nbsp;CERT&nbsp;#&nbsp;SEALED
+                  </span>
+                </div>
+                <div
+                  className="mt-2 rounded-[4px] overflow-hidden relative slab-window border border-black/5 flex items-center justify-center"
+                  style={{ aspectRatio: "0.82/1" }}
+                >
+                  <div className="ff-serif text-[120px] leading-none text-accent2 opacity-60">
+                    S
+                  </div>
+                </div>
+                <div
+                  className="mt-2 h-[16px] rounded-[3px] flex items-center justify-between px-2"
+                  style={{
+                    background: "#F4F2EC",
+                    border: "1px solid #E5E3DD",
+                  }}
+                >
+                  <span className="ff-mono text-[8px] tracking-[0.12em] text-dim">
+                    AWAITING&nbsp;REVEAL
+                  </span>
+                  <span className="ff-mono text-[8px] tracking-[0.12em] text-accent2">
+                    TEE
+                  </span>
                 </div>
               </div>
-
-              {displayBids.map((b) => (
-                <BidRow
-                  key={b.id}
-                  bid={b}
-                  revealed={revealed}
-                  flipped={!!flipped[b.id]}
-                  isWinner={!!winnerId && b.id === winnerId}
-                />
-              ))}
-
-              <TickerRow lines={displayReasoning} />
             </div>
-
-            {/* Settlement footer */}
-            <div className="mt-6 min-h-[58px]">
-              {showSettlement ? (
-                <div className="settle-in border-l-2 border-accent pl-4 py-1">
-                  <div className="ff-serif text-[16px] text-ink2">
-                    Settled privately to{" "}
-                    <span className="text-accent2 font-medium">
-                      {winner.name}
-                    </span>{" "}
-                    at{" "}
-                    <span className="tab-nums">
-                      ${winner.amount.toLocaleString()}
-                    </span>{" "}
-                    USDC.
-                  </div>
-                  <div className="mt-1 text-[12px] text-dim">
-                    Paid via Private Payments API · Loser bids never disclosed ·
-                    Receipt&nbsp;
-                    <span className="ff-mono text-[11px] text-ink2 underline decoration-rule underline-offset-2">
-                      0x7e2a…f10c
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-[12px] text-muted">
-                  Bids remain encrypted in the TEE until the seller calls{" "}
-                  <span className="ff-mono text-dim">reveal()</span>. Losing
-                  bids are discarded without disclosure.
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      </main>
-
-      {/* ─── Footer ─── */}
-      <footer className="border-t border-rule bg-paper">
-        <div className="max-w-[1200px] mx-auto px-8 h-12 flex items-center justify-between text-[11px] text-dim">
-          <div className="flex items-center gap-5">
-            <span className="ff-mono">Sealdex&nbsp;·&nbsp;v0.4.1</span>
-            <span className="text-muted">·</span>
-            <span>Sealed-bid infrastructure for autonomous agents</span>
-          </div>
-          <div className="flex items-center gap-5 ff-mono">
-            <span>tx&nbsp;0x7e2a…f10c</span>
-            <span className="text-muted">·</span>
-            <span>block&nbsp;#1,824,109</span>
-            <span className="text-muted">·</span>
-            <span className="text-accent2">enclave verified</span>
           </div>
         </div>
-      </footer>
+      </section>
+
+      {/* Live stats strip */}
+      <section className="border-b border-rule bg-paper">
+        <div className="max-w-[1200px] mx-auto px-8 grid grid-cols-4">
+          <StatTile
+            label="Lots posted"
+            value={totalLots.toString()}
+            sub="on devnet"
+          />
+          <StatTile
+            label="Active bidders"
+            value={distinctBidders.toString()}
+            sub="autonomous agents"
+          />
+          <StatTile label="Settlement" value="TEE" sub="Intel TDX attested" />
+          <StatTile label="Compliance" value="Auto" sub="OFAC / geofence" />
+        </div>
+      </section>
+
+      {/* Why this matters */}
+      <section className="bg-paper">
+        <div className="max-w-[1200px] mx-auto px-8 py-20 grid grid-cols-12 gap-12">
+          <div className="col-span-4">
+            <div className="eyebrow mb-3">The problem</div>
+            <h2 className="ff-serif text-[28px] leading-tight text-ink">
+              Public bidding agents leak their valuations.
+            </h2>
+          </div>
+          <div className="col-span-8 space-y-5 ff-serif text-[16px] leading-[1.75] text-ink2">
+            <p>
+              Vickrey auctions have great theoretical properties but require
+              trusting the auctioneer not to peek at sealed bids or invent
+              phantom losing bids. Nobody runs them in production for that
+              reason.
+            </p>
+            <p>
+              Worse — once you put an autonomous agent on a public chain, it
+              advertises its max valuation to anyone scraping the mempool.
+              Anyone can outbid it by a single dollar and capture all the
+              surplus. Sealed bids on a public ledger are an oxymoron.
+            </p>
+            <p>
+              Sealdex moves the entire bidding window inside an attested TEE.
+              The hardware itself becomes the auctioneer, and the result is a
+              single signed commitment back to base Solana — no second-best
+              bid revealed, no manipulation lever for the runner.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="bg-card border-t border-rule">
+        <div className="max-w-[1200px] mx-auto px-8 py-20 grid grid-cols-12 gap-12">
+          <div className="col-span-4">
+            <div className="eyebrow mb-3">How it works</div>
+            <h2 className="ff-serif text-[28px] leading-tight text-ink">
+              Four instructions. One enclave.
+            </h2>
+            <p className="mt-4 text-[13.5px] leading-[1.7] text-dim">
+              The Sealdex program lives on Solana base layer. Auction and Bid
+              accounts are immediately delegated to MagicBlock&apos;s TEE
+              validator, where their amounts stay sealed.
+            </p>
+          </div>
+          <div className="col-span-8 space-y-7">
+            <FlowStep
+              index="01"
+              title="create_auction (base layer)"
+              body="The auctioneer agent posts a lot — auction ID, metadata URI, payment mint, end time. The Auction PDA is initialized and immediately delegated to the TEE validator."
+            />
+            <FlowStep
+              index="02"
+              title="place_bid (delegated to TEE)"
+              body="A bidder agent (Claude with tool-use) decides the lot matches its want-list, then calls place_bid. The Bid PDA is created and delegated to the TEE in the same transaction — the amount field is sealed inside Intel TDX hardware before any other observer sees it."
+            />
+            <FlowStep
+              index="03"
+              title="settle_auction (in-TEE)"
+              body="After the auction expires, settle_auction runs inside the enclave. It iterates every Bid PDA via seed derivation, finds the maximum amount, and calls commit_and_undelegate_accounts to push the winner + winning bid back to base Solana. Losing bids are never disclosed."
+            />
+            <FlowStep
+              index="04"
+              title="claim_lot + escrow"
+              body="The winner calls claim_lot, which emits LotClaimed. An off-chain escrow agent subscribes to the event and triggers a private payment via the Private Payments API. Settlement is opaque to the public ledger."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Demo cards */}
+      <section className="border-t border-rule bg-paper">
+        <div className="max-w-[1200px] mx-auto px-8 py-20">
+          <div className="eyebrow mb-3">For the judge</div>
+          <h2 className="ff-serif text-[32px] leading-tight text-ink">
+            Three things to look at.
+          </h2>
+
+          <div className="mt-12 grid grid-cols-3 gap-6">
+            <Link
+              href="/sales"
+              className="group block bg-card border border-rule p-7 hover:border-ink transition-colors"
+            >
+              <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold mb-4">
+                01 · Live demo
+              </div>
+              <h3 className="ff-serif text-[20px] text-ink leading-tight">
+                Watch a sealed-bid auction settle.
+              </h3>
+              <p className="mt-3 text-[13px] text-dim leading-[1.6]">
+                Two autonomous Claude agents place sealed bids. The countdown
+                expires. The TEE settles. The reveal animation cascades and
+                names the winner — losers stay hidden.
+              </p>
+              <div className="mt-6 ff-mono text-[10.5px] tracking-[0.18em] uppercase text-accent2 font-semibold inline-flex items-center gap-1.5 group-hover:translate-x-1 transition-transform">
+                Open lot →
+              </div>
+            </Link>
+
+            <Link
+              href="/agents"
+              className="group block bg-card border border-rule p-7 hover:border-ink transition-colors"
+            >
+              <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold mb-4">
+                02 · Forkable
+              </div>
+              <h3 className="ff-serif text-[20px] text-ink leading-tight">
+                Anyone can deploy a bidder.
+              </h3>
+              <p className="mt-3 text-[13px] text-dim leading-[1.6]">
+                The bidder agent is a single Node script. Bring your own
+                Anthropic key, your own Solana wallet, your own Helius RPC
+                endpoint. Setup is roughly ten minutes.
+              </p>
+              <div className="mt-6 ff-mono text-[10.5px] tracking-[0.18em] uppercase text-accent2 font-semibold inline-flex items-center gap-1.5 group-hover:translate-x-1 transition-transform">
+                Read deployment guide →
+              </div>
+            </Link>
+
+            <Link
+              href="/docs"
+              className="group block bg-card border border-rule p-7 hover:border-ink transition-colors"
+            >
+              <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold mb-4">
+                03 · Architecture
+              </div>
+              <h3 className="ff-serif text-[20px] text-ink leading-tight">
+                Program addresses, IDs, design notes.
+              </h3>
+              <p className="mt-3 text-[13px] text-dim leading-[1.6]">
+                Devnet program ID, TEE validator pubkey, MagicBlock
+                permission/delegation programs. Read the architecture and
+                non-obvious design decisions.
+              </p>
+              <div className="mt-6 ff-mono text-[10.5px] tracking-[0.18em] uppercase text-accent2 font-semibold inline-flex items-center gap-1.5 group-hover:translate-x-1 transition-transform">
+                Open docs →
+              </div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer CTA */}
+      <section className="border-t border-rule bg-paper">
+        <div className="max-w-[1200px] mx-auto px-8 py-14 flex items-center justify-between">
+          <div>
+            <div className="ff-serif text-[22px] text-ink leading-tight">
+              Solo build by @0xnoramiya.
+            </div>
+            <div className="text-[13px] text-dim mt-1">
+              Source on GitHub. Devnet only.
+            </div>
+          </div>
+          <Link
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-6 h-11 bg-paper text-ink border border-rule hover:border-ink transition-colors"
+          >
+            View source
+          </Link>
+        </div>
+      </section>
+
+      <Footer />
     </div>
   );
 }
