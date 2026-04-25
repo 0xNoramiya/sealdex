@@ -1,37 +1,38 @@
-# Sealdex — Fly.io single-app deployment.
-# Run `fly launch --copy-config` to create the app; subsequent deploys are
-# `fly deploy`. See DEPLOY.md for secrets and the one-time wallet seed.
+# fly.toml app configuration file generated for sealdex on 2026-04-25T20:12:35+08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "sealdex"
-primary_region = "iad"
-kill_signal = "SIGTERM"
-kill_timeout = "30s"
+app = 'sealdex'
+primary_region = 'iad'
+kill_signal = 'SIGTERM'
+kill_timeout = '30s'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  NODE_ENV = "production"
-  PORT = "3000"
-  SEALDEX_STATE_DIR = "/data/state"
-  SEALDEX_KEYS_DIR = "/data/.keys"
-  SEALDEX_IDL_PATH = "/app/target/idl/sealdex_auction.json"
-  SOLANA_RPC_URL = "https://api.devnet.solana.com"
-  EPHEMERAL_RPC_URL = "https://devnet-tee.magicblock.app"
-  CYCLE_INTERVAL_SEC = "600"
+  CYCLE_INTERVAL_SEC = '600'
+  EPHEMERAL_RPC_URL = 'https://devnet-tee.magicblock.app'
+  NODE_ENV = 'production'
+  PORT = '3000'
+  SEALDEX_IDL_PATH = '/app/target/idl/sealdex_auction.json'
+  SEALDEX_KEYS_DIR = '/data/.keys'
+  SEALDEX_STATE_DIR = '/data/state'
+  SOLANA_RPC_URL = 'https://api.devnet.solana.com'
 
-[mounts]
-  source = "sealdex_data"
-  destination = "/data"
-  initial_size = "1gb"
+[[mounts]]
+  source = 'sealdex_data'
+  destination = '/data'
+  initial_size = '1gb'
 
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+  size = 'shared-cpu-1x'
+  memory = '1gb'
