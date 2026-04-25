@@ -239,9 +239,30 @@ async function evaluateLot(
   };
 }
 
+const REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+
 async function fetchRegistry(localPath: string): Promise<RegistryEntry[]> {
   if (REGISTRY_URL) {
-    const res = await fetch(REGISTRY_URL, { cache: "no-store" });
+    // Guard against a stalled or unreachable registry host. Without this the
+    // bidder loop can hang indefinitely on a single fetch() call.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), REGISTRY_FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(REGISTRY_URL, {
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+    } catch (err) {
+      if ((err as any)?.name === "AbortError") {
+        throw new Error(
+          `registry fetch timeout after ${REGISTRY_FETCH_TIMEOUT_MS}ms: ${REGISTRY_URL}`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) {
       throw new Error(`registry fetch ${res.status}: ${REGISTRY_URL}`);
     }

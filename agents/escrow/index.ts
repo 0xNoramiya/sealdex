@@ -11,7 +11,13 @@ import { fileURLToPath } from "node:url";
 import { IDL, PROGRAM_ID, BASE_RPC, baseConnection } from "../../mcp-server/src/client.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOG_PATH = resolve(__dirname, "../../scripts/escrow-log.jsonl");
+const ROOT = resolve(__dirname, "../..");
+const STATE_DIR = process.env.SEALDEX_STATE_DIR
+  ? resolve(process.env.SEALDEX_STATE_DIR)
+  : resolve(ROOT, "scripts");
+const LOG_PATH = resolve(STATE_DIR, "escrow-log.jsonl");
+
+const PRIVATE_PAYMENTS_TIMEOUT_MS = 15_000;
 
 type LotClaimed = {
   auctionId: anchor.BN;
@@ -35,14 +41,29 @@ async function callPrivatePaymentsTransfer(
     );
     return { stubbed: true };
   }
-  const r = await fetch(`${apiBase}/transfer`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ from: fromPubkey, to: toPubkey, amount, mint }),
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PRIVATE_PAYMENTS_TIMEOUT_MS);
+  let r: Response;
+  try {
+    r = await fetch(`${apiBase}/transfer`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ from: fromPubkey, to: toPubkey, amount, mint }),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    if ((err as any)?.name === "AbortError") {
+      throw new Error(
+        `PP /transfer timeout after ${PRIVATE_PAYMENTS_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!r.ok) throw new Error(`PP /transfer ${r.status}: ${await r.text()}`);
   return r.json();
 }
