@@ -12,7 +12,7 @@ const REPO_README =
 
 const ENV_SAMPLE = `export ANTHROPIC_API_KEY=sk-ant-…
 export SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<your-key>"
-export SEALDEX_REGISTRY_URL="https://sealdex.example/api/auctions"
+export SEALDEX_REGISTRY_URL="https://sealdex.fly.dev/api/auctions"
 export SEALDEX_STATE_DIR="$PWD/state"`;
 
 const RUN_SAMPLE = `yarn tsx agents/bidder/index.ts agents/bidder/configs/my-bidder.json`;
