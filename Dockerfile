@@ -7,37 +7,25 @@ FROM node:22-bullseye AS builder
 
 WORKDIR /app
 
-# ─── deps layer ─────────────────────────────────────────────────────────────
-# Each subpackage has its own lockfile (no Yarn workspaces), so install in
-# every directory that needs node_modules at runtime.
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
-
-COPY agents/auctioneer/package.json agents/auctioneer/yarn.lock agents/auctioneer/
-RUN cd agents/auctioneer && yarn install --frozen-lockfile
-
-COPY agents/bidder/package.json agents/bidder/yarn.lock agents/bidder/
-RUN cd agents/bidder && yarn install --frozen-lockfile
-
-COPY agents/escrow/package.json agents/escrow/yarn.lock agents/escrow/
-RUN cd agents/escrow && yarn install --frozen-lockfile
-
-COPY mcp-server/package.json mcp-server/yarn.lock mcp-server/
-RUN cd mcp-server && yarn install --frozen-lockfile
-
-COPY frontend/package.json frontend/yarn.lock frontend/
-RUN cd frontend && yarn install --frozen-lockfile
-
-# ─── source ─────────────────────────────────────────────────────────────────
-COPY tsconfig.json ./
-COPY agents/ agents/
+# ─── source + deps ──────────────────────────────────────────────────────────
+# The agents declare a file:../../mcp-server dependency, which yarn resolves
+# at install time — so mcp-server/ has to exist on disk before agent installs
+# can run. Copy all source up front, then install in dependency order.
+# We trade some layer caching for correctness; the build is fine for a single
+# deploy target.
+COPY package.json yarn.lock tsconfig.json ./
 COPY mcp-server/ mcp-server/
+COPY agents/ agents/
 COPY scripts/ scripts/
 COPY target/idl/ target/idl/
 COPY frontend/ frontend/
 
-# Build the frontend for production.
-RUN cd frontend && yarn build
+RUN yarn install --frozen-lockfile
+RUN cd mcp-server      && yarn install --frozen-lockfile
+RUN cd agents/auctioneer && yarn install --frozen-lockfile
+RUN cd agents/bidder     && yarn install --frozen-lockfile
+RUN cd agents/escrow     && yarn install --frozen-lockfile
+RUN cd frontend          && yarn install --frozen-lockfile && yarn build
 
 # ─── runtime ────────────────────────────────────────────────────────────────
 FROM node:22-bullseye-slim AS runtime
