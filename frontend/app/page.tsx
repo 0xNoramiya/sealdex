@@ -4,8 +4,6 @@ import { readRegistry, readBidderStates } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
 
-const REPO_URL = "https://github.com/0xNoramiya/sealdex";
-
 function StatTile({
   label,
   value,
@@ -89,7 +87,7 @@ export default function Page() {
                 href="/sales"
                 className="inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-6 h-11 bg-ink text-white hover:bg-ink2 transition-colors"
               >
-                View live auction
+                Open the catalog
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                   <path
                     d="M3 6h6M7 3l3 3-3 3"
@@ -104,7 +102,7 @@ export default function Page() {
                 href="/agents"
                 className="inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-6 h-11 bg-paper text-ink border border-rule hover:border-ink transition-colors"
               >
-                Run your own bidder
+                Deploy a bidder
               </Link>
             </div>
           </div>
@@ -243,32 +241,43 @@ export default function Page() {
         </div>
       </section>
 
-      {/* Demo cards */}
+      {/* Surfaces */}
       <section className="border-t border-rule bg-paper">
         <div className="max-w-[1200px] mx-auto px-8 py-20">
-          <div className="eyebrow mb-3">For the judge</div>
-          <h2 className="ff-serif text-[32px] leading-tight text-ink">
-            Three things to look at.
-          </h2>
+          <div className="grid grid-cols-12 gap-12 items-end mb-12">
+            <div className="col-span-7">
+              <div className="eyebrow mb-3">Surfaces</div>
+              <h2 className="ff-serif text-[32px] leading-tight text-ink tracking-[-0.01em]">
+                Browse the catalog. Stand up an agent. Read the protocol.
+              </h2>
+            </div>
+            <div className="col-span-5 text-[13.5px] leading-[1.7] text-dim">
+              The auction layer is open infrastructure. Collectors observe
+              live sealed-bid auctions; principals deploy autonomous bidders
+              against their own want-list and budget; integrators read the
+              program design and wire it into their flows.
+            </div>
+          </div>
 
-          <div className="mt-12 grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-3 gap-6">
             <Link
               href="/sales"
               className="group block bg-card border border-rule p-7 hover:border-ink transition-colors"
             >
               <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold mb-4">
-                01 · Live demo
+                Catalog
               </div>
               <h3 className="ff-serif text-[20px] text-ink leading-tight">
-                Watch a sealed-bid auction settle.
+                A live sealed-bid auction.
               </h3>
               <p className="mt-3 text-[13px] text-dim leading-[1.6]">
-                Two autonomous Claude agents place sealed bids. The countdown
-                expires. The TEE settles. The reveal animation cascades and
-                names the winner — losers stay hidden.
+                Two autonomous agents have placed bids on the current lot.
+                Their reasoning is public; their amounts stay sealed inside
+                the TEE until the countdown expires and settlement commits
+                the winner to base Solana.
               </p>
               <div className="mt-6 ff-mono text-[10.5px] tracking-[0.18em] uppercase text-accent2 font-semibold inline-flex items-center gap-1.5 group-hover:translate-x-1 transition-transform">
-                Open lot →
+                Open the catalog →
               </div>
             </Link>
 
@@ -277,18 +286,19 @@ export default function Page() {
               className="group block bg-card border border-rule p-7 hover:border-ink transition-colors"
             >
               <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold mb-4">
-                02 · Forkable
+                Agents
               </div>
               <h3 className="ff-serif text-[20px] text-ink leading-tight">
-                Anyone can deploy a bidder.
+                Deploy your own bidder.
               </h3>
               <p className="mt-3 text-[13px] text-dim leading-[1.6]">
-                The bidder agent is a single Node script. Bring your own
-                Anthropic key, your own Solana wallet, your own Helius RPC
-                endpoint. Setup is roughly ten minutes.
+                The bidder runs as a single Node service. Configure a
+                want-list and a budget, supply your own Anthropic key and
+                Solana wallet, and the agent evaluates every new lot
+                against your private criteria.
               </p>
               <div className="mt-6 ff-mono text-[10.5px] tracking-[0.18em] uppercase text-accent2 font-semibold inline-flex items-center gap-1.5 group-hover:translate-x-1 transition-transform">
-                Read deployment guide →
+                Deployment guide →
               </div>
             </Link>
 
@@ -297,43 +307,21 @@ export default function Page() {
               className="group block bg-card border border-rule p-7 hover:border-ink transition-colors"
             >
               <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold mb-4">
-                03 · Architecture
+                Protocol
               </div>
               <h3 className="ff-serif text-[20px] text-ink leading-tight">
-                Program addresses, IDs, design notes.
+                Program design and integration.
               </h3>
               <p className="mt-3 text-[13px] text-dim leading-[1.6]">
-                Devnet program ID, TEE validator pubkey, MagicBlock
-                permission/delegation programs. Read the architecture and
-                non-obvious design decisions.
+                Four instructions. Permission and delegation flow.
+                Settlement attestation. Devnet program ID, TEE validator
+                pubkey, and the architectural decisions behind the design.
               </p>
               <div className="mt-6 ff-mono text-[10.5px] tracking-[0.18em] uppercase text-accent2 font-semibold inline-flex items-center gap-1.5 group-hover:translate-x-1 transition-transform">
-                Open docs →
+                Read the protocol →
               </div>
             </Link>
           </div>
-        </div>
-      </section>
-
-      {/* Footer CTA */}
-      <section className="border-t border-rule bg-paper">
-        <div className="max-w-[1200px] mx-auto px-8 py-14 flex items-center justify-between">
-          <div>
-            <div className="ff-serif text-[22px] text-ink leading-tight">
-              Solo build by @0xnoramiya.
-            </div>
-            <div className="text-[13px] text-dim mt-1">
-              Source on GitHub. Devnet only.
-            </div>
-          </div>
-          <Link
-            href={REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2.5 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-6 h-11 bg-paper text-ink border border-rule hover:border-ink transition-colors"
-          >
-            View source
-          </Link>
         </div>
       </section>
 
