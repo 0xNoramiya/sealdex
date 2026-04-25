@@ -10,10 +10,19 @@ export async function GET() {
   const registry = readRegistry();
   const bidders = readBidderStates();
 
+  // Bound the cluster probe so a slow devnet RPC can't push the health
+  // route past the Fly check timeout (5s). If we don't hear back in 3s we
+  // mark the cluster unreachable rather than blocking.
+  const CLUSTER_PROBE_MS = 3000;
   let clusterUnix: number | null = null;
   let clusterReachable = true;
   try {
-    clusterUnix = await clusterUnixTime();
+    clusterUnix = await Promise.race([
+      clusterUnixTime(),
+      new Promise<number>((_, reject) =>
+        setTimeout(() => reject(new Error("cluster probe timeout")), CLUSTER_PROBE_MS),
+      ),
+    ]);
   } catch {
     clusterReachable = false;
   }
