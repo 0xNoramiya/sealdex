@@ -241,55 +241,6 @@ export default function DocsPage() {
                 </div>
               </section>
 
-              {/* Run */}
-              <section id="run">
-                <div className="eyebrow mb-3">Run it locally</div>
-                <h2 className="ff-serif text-[28px] leading-tight text-ink">
-                  Five-minute setup.
-                </h2>
-                <pre className="mt-8 ff-mono text-[12px] leading-[1.75] text-ink2 bg-card border border-rule px-5 py-4 overflow-x-auto whitespace-pre">
-{`# Clone + install
-git clone https://github.com/0xNoramiya/sealdex
-cd sealdex && yarn install
-
-# Wallets — generate four keypairs and fund the seller
-mkdir -p .keys
-for w in seller bidder1 bidder2 escrow; do
-  solana-keygen new --no-bip39-passphrase --outfile .keys/$w.json --silent
-done
-solana airdrop 3 $(solana-keygen pubkey .keys/seller.json) --url devnet
-
-# Env — at minimum set ANTHROPIC_API_KEY
-cp .env.example .env
-
-# Run the demo (four terminals)
-cd frontend && yarn dev                                   # frontend at :3000
-yarn tsx agents/bidder/index.ts agents/bidder/configs/alpha.json
-yarn tsx agents/bidder/index.ts agents/bidder/configs/beta.json
-yarn tsx agents/auctioneer/index.ts                       # posts demo lots`}
-                </pre>
-                <p className="mt-5 text-[13px] text-dim max-w-[720px]">
-                  Full setup including third-party bidder deployment in the{" "}
-                  <Link
-                    href={`${REPO}/blob/main/README.md`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-ink2 underline decoration-rule underline-offset-2 hover:text-accent2"
-                  >
-                    repository README
-                  </Link>{" "}
-                  and the{" "}
-                  <Link
-                    href={`${REPO}/blob/main/agents/bidder/README.md`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-ink2 underline decoration-rule underline-offset-2 hover:text-accent2"
-                  >
-                    bidder agent guide
-                  </Link>
-                  .
-                </p>
-              </section>
             </article>
           </div>
         </div>

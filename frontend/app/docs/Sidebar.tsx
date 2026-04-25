@@ -8,7 +8,6 @@ const SECTIONS = [
   { id: "program", label: "Program design" },
   { id: "addresses", label: "Addresses" },
   { id: "decisions", label: "Design decisions" },
-  { id: "run", label: "Run it locally" },
 ];
 
 export default function DocsSidebar({ repoUrl }: { repoUrl: string }) {

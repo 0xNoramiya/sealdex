@@ -7,15 +7,12 @@ export const metadata: Metadata = {
   description: "Run your own autonomous bidder against the live Sealdex auction.",
 };
 
-const REPO_README =
-  "https://github.com/0xNoramiya/sealdex/blob/main/agents/bidder/README.md";
+const REPO = "https://github.com/0xNoramiya/sealdex";
+const REPO_AGENTS_MD = `${REPO}/blob/main/AGENTS.md`;
+const REPO_BIDDER_README = `${REPO}/blob/main/agents/bidder/README.md`;
 
-const ENV_SAMPLE = `export ANTHROPIC_API_KEY=sk-ant-…
-export SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<your-key>"
-export SEALDEX_REGISTRY_URL="https://sealdex.fly.dev/api/auctions"
-export SEALDEX_STATE_DIR="$PWD/state"`;
-
-const RUN_SAMPLE = `yarn tsx agents/bidder/index.ts agents/bidder/configs/my-bidder.json`;
+const WALLET_SAMPLE = `solana-keygen new --no-bip39-passphrase --outfile .keys/my-bidder.json
+solana airdrop 1 $(solana-keygen pubkey .keys/my-bidder.json) --url devnet`;
 
 const CONFIG_SAMPLE = `{
   "name": "Bidder Foo",
@@ -27,6 +24,30 @@ const CONFIG_SAMPLE = `{
   "risk_appetite": "balanced"
 }`;
 
+const CLONE_RUN = `git clone https://github.com/0xNoramiya/sealdex
+cd sealdex && yarn install
+
+export ANTHROPIC_API_KEY=sk-ant-…
+export SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<your-key>"
+export SEALDEX_REGISTRY_URL="https://sealdex.fly.dev/api/auctions"
+export SEALDEX_STATE_DIR="$PWD/state"
+
+yarn tsx agents/bidder/index.ts agents/bidder/configs/my-bidder.json`;
+
+const MCP_JSON = `{
+  "mcpServers": {
+    "sealdex": {
+      "command": "node",
+      "args": ["--import", "tsx", "mcp-server/src/index.ts"]
+    }
+  }
+}`;
+
+const AGENTS_PROMPT = `Act as the Sealdex bidder defined in
+agents/bidder/configs/my-bidder.json. Poll /api/auctions every 5
+seconds, evaluate each new lot per the rules in AGENTS.md, and call
+place_bid on matches.`;
+
 function CodeBlock({ children }: { children: string }) {
   return (
     <pre className="ff-mono text-[12px] leading-[1.7] text-ink2 bg-card border border-rule px-5 py-4 overflow-x-auto whitespace-pre">
@@ -35,32 +56,58 @@ function CodeBlock({ children }: { children: string }) {
   );
 }
 
-function Step({
+function PathCard({
   index,
   title,
   body,
+  badge,
   code,
+  cta,
 }: {
   index: string;
   title: string;
   body: React.ReactNode;
-  code?: string;
+  badge: string;
+  code: string;
+  cta: { label: string; href: string };
 }) {
   return (
-    <section className="grid grid-cols-12 gap-10 py-10 border-t border-rule">
-      <div className="col-span-3">
+    <article className="grid grid-cols-12 gap-10 py-12 border-t border-rule">
+      <div className="col-span-4">
         <div className="ff-mono text-[10.5px] tracking-[0.2em] uppercase text-muted font-semibold">
-          Step {index}
+          Path {index}
         </div>
-        <h2 className="ff-serif text-[24px] leading-tight text-ink mt-2">
+        <h2 className="ff-serif text-[26px] leading-tight text-ink mt-2 tracking-[-0.005em]">
           {title}
         </h2>
+        <span className="inline-block mt-3 ff-mono text-[10px] tracking-[0.18em] uppercase font-semibold px-2 py-1 border border-rule text-dim">
+          {badge}
+        </span>
       </div>
-      <div className="col-span-9 space-y-4">
+      <div className="col-span-8 space-y-4">
         <div className="text-[14px] leading-[1.75] text-ink2">{body}</div>
-        {code && <CodeBlock>{code}</CodeBlock>}
+        <CodeBlock>{code}</CodeBlock>
+        <div>
+          <Link
+            href={cta.href}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 ff-mono text-[10.5px] tracking-[0.18em] uppercase font-semibold px-4 h-9 bg-paper text-ink border border-rule hover:border-ink transition-colors"
+          >
+            {cta.label}
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M3 6h6M7 3l3 3-3 3"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </Link>
+        </div>
       </div>
-    </section>
+    </article>
   );
 }
 
@@ -95,78 +142,118 @@ export default function AgentsPage() {
             </h1>
             <p className="mt-5 ff-serif text-[17px] leading-[1.7] text-ink2">
               Sealdex lots are open to anyone who can sign a Solana
-              transaction. Stand up your own autonomous bidder, configure a
-              want-list and a budget, and let it evaluate every new lot
-              against your private criteria. Your reasoning streams to the
-              public catalog. Your bid amount stays sealed inside the TEE
-              until settlement.
+              transaction. Configure a want-list and a budget, and let an
+              autonomous bidder evaluate every new lot against your private
+              criteria. Your reasoning streams to the public catalog; your
+              bid amount stays sealed inside the TEE until settlement.
             </p>
             <p className="mt-4 text-[13px] text-dim">
-              The agent is a single Node script. You bring your own Anthropic
-              key, your own Solana keypair, and (recommended) your own Helius
-              RPC endpoint for transaction reliability. Setup is roughly ten
-              minutes.
+              Three deployment paths — pick the one that matches your
+              runtime. All three reach the same on-chain entry points and
+              the same public registry feed.
             </p>
           </div>
 
-          <div className="mt-14">
-            <Step
-              index="01"
-              title="Generate a wallet."
-              body={
-                <p>
-                  Create a fresh Solana keypair, fund it on devnet, and store
-                  the JSON path. Your bidder signs <span className="ff-mono">place_bid</span>{" "}
-                  transactions with this key.
-                </p>
-              }
-              code={`solana-keygen new --no-bip39-passphrase --outfile .keys/my-bidder.json
-solana airdrop 1 $(solana-keygen pubkey .keys/my-bidder.json) --url devnet`}
-            />
+          {/* Shared prerequisites */}
+          <section className="mt-12 grid grid-cols-12 gap-10 border-t border-rule pt-10">
+            <div className="col-span-4">
+              <div className="eyebrow mb-2">Before any path</div>
+              <h2 className="ff-serif text-[22px] leading-tight text-ink">
+                Wallet + want-list.
+              </h2>
+              <p className="mt-3 text-[13px] text-dim leading-[1.7]">
+                Each path needs the same two things: a funded devnet
+                keypair to sign{" "}
+                <span className="ff-mono">place_bid</span>, and a JSON
+                config describing what your principal cares about.
+              </p>
+            </div>
+            <div className="col-span-8 space-y-4">
+              <CodeBlock>{WALLET_SAMPLE}</CodeBlock>
+              <CodeBlock>{CONFIG_SAMPLE}</CodeBlock>
+              <p className="text-[12.5px] text-dim leading-[1.7]">
+                <span className="ff-mono">name</span> is shown publicly on
+                the catalog page. <span className="ff-mono">want_list</span>{" "}
+                and <span className="ff-mono">total_budget_usdc</span> stay
+                on your machine — they only constrain bidding decisions in
+                your local process.
+              </p>
+            </div>
+          </section>
 
-            <Step
-              index="02"
-              title="Configure the agent."
-              body={
-                <p>
-                  Drop a config file at{" "}
-                  <span className="ff-mono">agents/bidder/configs/my-bidder.json</span>
-                  . The <span className="ff-mono">name</span> is shown
-                  publicly on the catalog page; the want-list and budget stay
-                  on your machine and only constrain Claude.
-                </p>
-              }
-              code={CONFIG_SAMPLE}
-            />
+          {/* Path 01 — Clone */}
+          <PathCard
+            index="01"
+            title="Clone the standalone bidder."
+            badge="Node script"
+            body={
+              <p>
+                The reference bidder is a single Node script that polls{" "}
+                <span className="ff-mono">/api/auctions</span> every five
+                seconds, evaluates unseen lots via the Anthropic SDK, and
+                places sealed bids on matches. Bring your own Anthropic key
+                and (recommended) a Helius RPC endpoint — devnet&apos;s
+                default RPC is too rate-limited for time-bounded bids.
+              </p>
+            }
+            code={CLONE_RUN}
+            cta={{ label: "Bidder README", href: REPO_BIDDER_README }}
+          />
 
-            <Step
-              index="03"
-              title="Point at a registry. Set your keys."
-              body={
+          {/* Path 02 — MCP */}
+          <PathCard
+            index="02"
+            title="Connect your client over MCP."
+            badge="Cursor · Claude Desktop · custom"
+            body={
+              <>
                 <p>
-                  Export your environment. The registry URL is the public
-                  feed of open auctions on the Sealdex frontend you intend to
-                  bid into. Helius RPC is recommended — devnet's default
-                  endpoint is too rate-limited for time-bounded bids.
+                  The Sealdex MCP server exposes the on-chain ops as
+                  callable tools (<span className="ff-mono">place_bid</span>,
+                  <span className="ff-mono"> get_auction_state</span>,{" "}
+                  <span className="ff-mono">get_auctions_by_ids</span>, and
+                  the seller-side trio). Drop the snippet below into your
+                  client&apos;s MCP config — the same{" "}
+                  <span className="ff-mono">.mcp.json</span> shape that
+                  ships in the repo root — and the tools become first-class
+                  in any conversation.
                 </p>
-              }
-              code={ENV_SAMPLE}
-            />
+                <p className="mt-3">
+                  Then prompt your client with the bidding rules from
+                  AGENTS.md and your config path, and it can place bids
+                  directly via tool-use.
+                </p>
+              </>
+            }
+            code={MCP_JSON}
+            cta={{ label: "AGENTS.md", href: REPO_AGENTS_MD }}
+          />
 
-            <Step
-              index="04"
-              title="Run."
-              body={
+          {/* Path 03 — AGENTS.md */}
+          <PathCard
+            index="03"
+            title="Open the repo in an agent runtime."
+            badge="Claude Code · Codex · Aider"
+            body={
+              <>
                 <p>
-                  The agent polls the registry every five seconds, evaluates
-                  unseen lots through Claude, and places sealed bids when
-                  Claude decides the lot matches. Skipped lots leave no
-                  on-chain footprint.
+                  AGENTS.md is the portable agent-context file that
+                  Claude Code, Cursor, Codex, Aider, and other AI runtimes
+                  read at project root. Sealdex ships one with the bidder
+                  persona, the strict rules, the MCP tool table, and the
+                  HTTP API surface — and the repo&apos;s{" "}
+                  <span className="ff-mono">.mcp.json</span> auto-registers
+                  the Sealdex tools when your client opens the repo.
                 </p>
-              }
-              code={RUN_SAMPLE}
-            />
-          </div>
+                <p className="mt-3">
+                  After cloning, open the repo in your runtime, accept the
+                  MCP permission prompt, and tell it:
+                </p>
+              </>
+            }
+            code={AGENTS_PROMPT}
+            cta={{ label: "AGENTS.md", href: REPO_AGENTS_MD }}
+          />
 
           <section className="mt-16 grid grid-cols-12 gap-10 border-t border-b border-rule py-10">
             <div className="col-span-3">
@@ -187,30 +274,6 @@ solana airdrop 1 $(solana-keygen pubkey .keys/my-bidder.json) --url devnet`}
               </p>
             </div>
           </section>
-
-          <div className="mt-14 flex items-center justify-between">
-            <div className="text-[13px] text-dim">
-              Full setup walkthrough, including state file layout and stream
-              format, in the bidder README.
-            </div>
-            <Link
-              href={REPO_README}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 ff-mono text-[11px] tracking-[0.18em] uppercase font-semibold px-5 h-10 bg-ink text-white hover:bg-ink2"
-            >
-              Read the deployment guide
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M3 6h6M7 3l3 3-3 3"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </Link>
-          </div>
         </div>
       </main>
 
