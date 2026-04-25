@@ -40,36 +40,49 @@ function fmtTimeLeft(secondsLeft: number): string {
   return `${s}s`;
 }
 
+// Cap how many lots we fan out RPC reads for. The registry grows
+// indefinitely as the auto-cycle posts new lots; the page would otherwise
+// make hundreds of serial Solana RPC calls on each request.
+const MAX_LOT_ROWS = 50;
+
 async function buildLotRows(): Promise<LotRow[]> {
   const registry = readRegistry();
   const states = readBidderStates();
   const now = Math.floor(Date.now() / 1000);
-  const out: LotRow[] = [];
-  for (const r of registry) {
-    let status: LotRow["status"] = "Unknown";
+  const recent = registry.slice(-MAX_LOT_ROWS);
+
+  // Fan out the per-auction reads in parallel — each one is an
+  // independent RPC call, so serial waits add up.
+  const settled = await Promise.all(
+    recent.map((r) =>
+      readAuction(r.auctionId)
+        .then((auction) => ({ r, auction, errored: false }))
+        .catch(() => ({ r, auction: null, errored: true })),
+    ),
+  );
+
+  const rows: LotRow[] = settled.map(({ r, auction, errored }) => {
+    let status: LotRow["status"];
     let winner: string | null = null;
     let winningBidUsdc: number | null = null;
-    try {
-      const auction = await readAuction(r.auctionId);
-      if (auction) {
-        status = auction.status;
-        winner = auction.winner;
-        if (auction.winningBidNative) {
-          winningBidUsdc = Math.floor(
-            Number(auction.winningBidNative) / 1_000_000,
-          );
-        }
-      } else {
-        status = r.endTimeUnix <= now ? "Unknown" : "Open";
+    if (errored) {
+      status = r.endTimeUnix <= now ? "Unknown" : "Open";
+    } else if (auction) {
+      status = auction.status;
+      winner = auction.winner;
+      if (auction.winningBidNative) {
+        winningBidUsdc = Math.floor(
+          Number(auction.winningBidNative) / 1_000_000,
+        );
       }
-    } catch {
+    } else {
       status = r.endTimeUnix <= now ? "Unknown" : "Open";
     }
     let bidsPlaced = 0;
     for (const s of states) {
       if (s.bidsPlaced[r.auctionId]?.amountUsdc > 0) bidsPlaced++;
     }
-    out.push({
+    return {
       auctionId: r.auctionId,
       auctionPda: r.auctionPda,
       title: r.lot.lot_metadata.title ?? `Lot ${r.lot.lot_id}`,
@@ -82,9 +95,9 @@ async function buildLotRows(): Promise<LotRow[]> {
       winner,
       winningBidUsdc,
       bidsPlaced,
-    });
-  }
-  return out.reverse();
+    };
+  });
+  return rows.reverse();
 }
 
 function StatusPill({ status }: { status: LotRow["status"] }) {
@@ -122,6 +135,8 @@ function StatusPill({ status }: { status: LotRow["status"] }) {
 export default async function LotsPage() {
   const rows = await buildLotRows();
   const now = Math.floor(Date.now() / 1000);
+  const totalEverPosted = readRegistry().length;
+  const truncated = totalEverPosted > rows.length;
 
   return (
     <div className="min-h-screen flex flex-col relative paper-bg">
@@ -137,7 +152,11 @@ export default async function LotsPage() {
             <span className="text-ink">Lots</span>
           </div>
           <div className="flex items-center gap-5 text-dim">
-            <span>{rows.length} total</span>
+            <span>
+              {truncated
+                ? `latest ${rows.length} of ${totalEverPosted}`
+                : `${rows.length} total`}
+            </span>
             <span className="text-muted">·</span>
             <span>
               {rows.filter((r) => r.status === "Open").length} sealed

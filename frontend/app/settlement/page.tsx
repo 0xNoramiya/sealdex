@@ -34,32 +34,36 @@ function fmtUnix(unix: number): string {
   return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
 }
 
+// Same cap as /lots: bound the RPC fan-out so the settlement page stays
+// fast even after a long-running cycle has posted hundreds of auctions.
+const MAX_SETTLEMENT_ROWS = 50;
+
 async function buildRows(): Promise<SettlementRow[]> {
   const registry = readRegistry();
   const states = readBidderStates();
+  const recent = registry.slice(-MAX_SETTLEMENT_ROWS);
+
+  const settled = await Promise.all(
+    recent.map((r) =>
+      readAuction(r.auctionId)
+        .then((auction) => ({ r, auction }))
+        .catch(() => ({ r, auction: null })),
+    ),
+  );
+
   const out: SettlementRow[] = [];
-  for (const r of registry) {
-    let status: "Settled" | "Claimed" | null = null;
-    let winner: string | null = null;
-    let winningBidUsdc: number | null = null;
-    try {
-      const auction = await readAuction(r.auctionId);
-      if (
-        auction &&
-        (auction.status === "Settled" || auction.status === "Claimed") &&
-        auction.winner &&
-        auction.winningBidNative
-      ) {
-        status = auction.status;
-        winner = auction.winner;
-        winningBidUsdc = Math.floor(
-          Number(auction.winningBidNative) / 1_000_000,
-        );
-      }
-    } catch {
-      /* skip */
+  for (const { r, auction } of settled) {
+    if (
+      !auction ||
+      (auction.status !== "Settled" && auction.status !== "Claimed") ||
+      !auction.winner ||
+      !auction.winningBidNative
+    ) {
+      continue;
     }
-    if (!status || !winner || winningBidUsdc == null) continue;
+    const winningBidUsdc = Math.floor(
+      Number(auction.winningBidNative) / 1_000_000,
+    );
     let totalBidders = 0;
     for (const s of states) {
       if (s.bidsPlaced[r.auctionId]?.amountUsdc > 0) totalBidders++;
@@ -70,8 +74,8 @@ async function buildRows(): Promise<SettlementRow[]> {
       title: r.lot.lot_metadata.title ?? `Lot ${r.lot.lot_id}`,
       category: r.lot.lot_metadata.category ?? "Lot",
       endTimeUnix: r.endTimeUnix,
-      status,
-      winner,
+      status: auction.status,
+      winner: auction.winner,
       winningBidUsdc,
       totalBidders,
     });
