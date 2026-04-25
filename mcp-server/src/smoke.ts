@@ -1,6 +1,8 @@
 // Smoke test for ops.ts — creates an auction with a far-future end_time,
 // reads it back via get_auction_state, then verifies it shows up via getAuctionsByIds.
 // Skips bids/settle so it doesn't consume bidder wallets.
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   createAuction,
   endTimeFromNow,
@@ -8,8 +10,13 @@ import {
   getAuctionState,
 } from "./ops.js";
 
-const SELLER = process.env.SEALDEX_SELLER_KEYPAIR ||
-  "/home/kudaliar/hackathon/sealdex/.keys/seller.json";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, "../..");
+const KEYS_DIR = process.env.SEALDEX_KEYS_DIR
+  ? resolve(process.env.SEALDEX_KEYS_DIR)
+  : resolve(ROOT, ".keys");
+const SELLER =
+  process.env.SEALDEX_SELLER_KEYPAIR || resolve(KEYS_DIR, "seller.json");
 
 async function main() {
   // While delegated, the auction won't be readable from base layer — that's expected.
