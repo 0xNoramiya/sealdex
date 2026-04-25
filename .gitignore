@@ -1,0 +1,43 @@
+# Secrets / wallets
+.env
+.env.*
+!.env.example
+.keys/
+*.keypair.json
+keypair*.json
+target/deploy/*-keypair.json
+
+# Anchor / Rust
+target/
+**/target/
+.anchor/
+test-ledger/
+Cargo.lock
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Local scratch
+scratch/
+tmp/
+.cache/

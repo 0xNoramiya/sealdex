@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: #fafaf7;
+  color: #14171c;
+}
+body {
+  font-family: var(--font-inter), ui-sans-serif, system-ui;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ff-serif {
+  font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+  font-optical-sizing: auto;
+}
+.ff-mono {
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular;
+}
+
+.tab-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulseDotMint {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(30, 139, 102, 0.42);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(30, 139, 102, 0);
+  }
+}
+.pulse-dot {
+  animation: pulseDotMint 1.8s ease-out infinite;
+}
+
+/* Slab plastic — premium, restrained */
+.slab-case {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f2ec 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(20, 30, 50, 0.05),
+    0 30px 60px -28px rgba(40, 30, 20, 0.18),
+    0 8px 18px -8px rgba(40, 30, 20, 0.1);
+}
+.slab-window {
+  background: radial-gradient(
+    ellipse at 50% 35%,
+    #fffaec 0%,
+    #f7e9c6 40%,
+    #e9d7be 100%
+  );
+}
+
+/* Pill flip */
+.flip-wrap {
+  perspective: 800px;
+}
+.flip {
+  transform-style: preserve-3d;
+  transition: transform 360ms cubic-bezier(0.6, 0.2, 0.2, 1);
+  position: relative;
+  width: 150px;
+  height: 24px;
+}
+.flip.flipped {
+  transform: rotateX(180deg);
+}
+.flip > div {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.flip .back {
+  transform: rotateX(180deg);
+}
+
+/* Reasoning ticker */
+@keyframes tickerFade {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  90% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+.ticker-line {
+  animation: tickerFade 2200ms ease-in-out both;
+}
+
+@keyframes settleIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.settle-in {
+  animation: settleIn 480ms ease-out 80ms both;
+}
+
+/* Bid row */
+.bid-row {
+  background: #ffffff;
+  border-bottom: 1px solid #eeede7;
+  transition: background 220ms ease;
+}
+.bid-row:last-child {
+  border-bottom: 0;
+}
+.bid-row.winner {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 139, 102, 0.05),
+    rgba(30, 139, 102, 0) 60%
+  );
+}
+
+/* Hairline header rule */
+.hr-thin {
+  height: 1px;
+  background: #e5e3dd;
+}
+.hr-bold {
+  height: 2px;
+  background: #14171c;
+}
+
+/* Subtle paper texture (no noise — just ultra-soft top vignette) */
+.paper-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    60% 40% at 50% 0%,
+    rgba(20, 23, 28, 0.025),
+    transparent 70%
+  );
+}
+
+/* Kerned eyebrow caps */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8c92a0;
+}
+.eyebrow-ink {
+  color: #14171c;
+}
+
+/* Number plinth for countdown */
+.plinth {
+  border-top: 1px solid #e5e3dd;
+  border-bottom: 1px solid #e5e3dd;
+}

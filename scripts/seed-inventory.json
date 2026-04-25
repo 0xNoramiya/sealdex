@@ -1,0 +1,30 @@
+[
+  {
+    "lot_id": 1,
+    "lot_metadata": {
+      "title": "Vintage Holo — Lot 001",
+      "category": "Vintage Holo",
+      "year": 1999,
+      "grade": 9,
+      "serial": "001/250",
+      "estimate_low_usdc": 2400,
+      "estimate_high_usdc": 3400,
+      "cert_number": "12847291"
+    },
+    "duration_seconds": 90
+  },
+  {
+    "lot_id": 2,
+    "lot_metadata": {
+      "title": "Modern Premium — Lot 002",
+      "category": "Modern Premium",
+      "year": 2018,
+      "grade": 9,
+      "serial": "037/500",
+      "estimate_low_usdc": 600,
+      "estimate_high_usdc": 900,
+      "cert_number": "12847414"
+    },
+    "duration_seconds": 90
+  }
+]

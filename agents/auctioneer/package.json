@@ -1,0 +1,17 @@
+{
+  "name": "@sealdex/auctioneer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@sealdex/mcp-server": "file:../../mcp-server"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "@types/node": "^22.10.0"
+  }
+}

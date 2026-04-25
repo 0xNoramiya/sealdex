@@ -1,0 +1,10 @@
+{
+  "name": "Bidder Alpha",
+  "keypair_path": ".keys/bidder1.json",
+  "want_list": [
+    { "category": "Vintage Holo", "min_grade": 9, "max_value_usdc": 5000 },
+    { "category": "Modern Premium", "min_grade": 8, "max_value_usdc": 800 }
+  ],
+  "total_budget_usdc": 10000,
+  "risk_appetite": "balanced"
+}
