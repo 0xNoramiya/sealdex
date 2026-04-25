@@ -16,6 +16,7 @@ type Bid = {
   id: string;
   name: string;
   pubkey: string;
+  pubkeyFull?: string;
   amount: number;
   kind: string;
   tag: string;
@@ -387,7 +388,19 @@ function BidRow({
           )}
         </div>
         <div className="flex items-center gap-3 mt-1.5">
-          <span className="ff-mono text-[11px] text-muted">{bid.pubkey}</span>
+          {bid.pubkeyFull ? (
+            <a
+              href={explorerAddress(bid.pubkeyFull)}
+              target="_blank"
+              rel="noreferrer"
+              className="ff-mono text-[11px] text-muted hover:text-accent2 underline decoration-rule underline-offset-2"
+              title="Open bidder address on Solana Explorer"
+            >
+              {bid.pubkey}
+            </a>
+          ) : (
+            <span className="ff-mono text-[11px] text-muted">{bid.pubkey}</span>
+          )}
           <span className="text-muted">·</span>
           <span className="text-[11px] text-dim">{bid.kind}</span>
           <span className="text-muted">·</span>
@@ -538,6 +551,7 @@ export default function Page() {
           id: b.agentSlug,
           name: b.name,
           pubkey: b.pubkey,
+          pubkeyFull: b.pubkeyFull,
           amount: b.amountUsdc ?? 0,
           kind: "Autonomous Agent",
           tag: b.tag,
