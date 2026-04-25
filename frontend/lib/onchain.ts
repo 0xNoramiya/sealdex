@@ -60,9 +60,11 @@ export interface AuctionView {
 }
 
 function decodeStatus(s: any): AuctionStatus {
-  if (s?.open !== undefined) return "Open";
-  if (s?.settled !== undefined) return "Settled";
-  if (s?.claimed !== undefined) return "Claimed";
+  // BorshAccountsCoder emits variants as PascalCase keys (Open / Settled /
+  // Claimed). Some Anchor codepaths also emit lowercase, so accept both.
+  if (s?.Open !== undefined || s?.open !== undefined) return "Open";
+  if (s?.Settled !== undefined || s?.settled !== undefined) return "Settled";
+  if (s?.Claimed !== undefined || s?.claimed !== undefined) return "Claimed";
   return "Unknown";
 }
 
@@ -79,17 +81,25 @@ export async function readAuction(
   const pda = auctionPda(auctionId);
   const info = await connection().getAccountInfo(pda);
   if (!info) return null;
-  const a: any = coder().decode("auction", info.data);
+  const a: any = coder().decode("Auction", info.data);
+  // BorshAccountsCoder returns IDL field names verbatim (snake_case here).
+  // Tolerate both cases so this stays robust if someone swaps in
+  // Program.coder.accounts.decode later.
+  const auctionIdField = a.auction_id ?? a.auctionId;
+  const lotUriField = a.lot_metadata_uri ?? a.lotMetadataUri;
+  const paymentMintField = a.payment_mint ?? a.paymentMint;
+  const endTimeField = a.end_time ?? a.endTime;
+  const winningBidField = a.winning_bid ?? a.winningBid;
   return {
-    auctionId: (a.auctionId as BN).toString(),
+    auctionId: (auctionIdField as BN).toString(),
     auctionPda: pda.toBase58(),
     seller: (a.seller as PublicKey).toBase58(),
-    lotMetadataUri: a.lotMetadataUri,
-    paymentMint: (a.paymentMint as PublicKey).toBase58(),
-    endTimeUnix: (a.endTime as BN).toNumber(),
+    lotMetadataUri: lotUriField,
+    paymentMint: (paymentMintField as PublicKey).toBase58(),
+    endTimeUnix: (endTimeField as BN).toNumber(),
     status: decodeStatus(a.status),
     winner: a.winner ? (a.winner as PublicKey).toBase58() : null,
-    winningBidNative: a.winningBid ? (a.winningBid as BN).toString() : null,
+    winningBidNative: winningBidField ? (winningBidField as BN).toString() : null,
   };
 }
 

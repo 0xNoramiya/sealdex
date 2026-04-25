@@ -41,3 +41,9 @@ logs/
 scratch/
 tmp/
 .cache/
+
+# Runtime state written by agents (auctioneer registry, bidder state/streams)
+scripts/auction-registry.json
+scripts/bidder-*-state.json
+scripts/bidder-*-stream.jsonl
+scripts/.anchor/
