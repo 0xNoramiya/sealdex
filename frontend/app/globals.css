@@ -176,3 +176,27 @@ body {
   border-top: 1px solid #e5e3dd;
   border-bottom: 1px solid #e5e3dd;
 }
+
+/* Honor user motion preferences. The reveal still resolves to the same
+ * end-state (winner highlighted, settlement strip visible) — we just skip
+ * the animation timing so motion-sensitive users get the result instantly. */
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot {
+    animation: none;
+  }
+  .flip {
+    transition: none;
+  }
+  .flip.flipped {
+    /* Flat 180° rotation has no in-between frames; the back face still
+     * shows because backface-visibility resolves correctly at the end. */
+    transition-duration: 0s;
+  }
+  .ticker-line {
+    animation: none;
+    opacity: 1;
+  }
+  .settle-in {
+    animation: none;
+  }
+}
