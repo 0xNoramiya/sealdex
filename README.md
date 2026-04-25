@@ -99,9 +99,13 @@ sealdex/
 │   ├── auctioneer/             Posts auctions from seed-inventory.json
 │   ├── bidder/                 Claude tool-use loop — the centerpiece
 │   └── escrow/                 Subscribes LotClaimed → Private Payments transfer
-├── frontend/                   Next.js 15 catalog page
-│   ├── app/page.tsx            Lot detail page with live reveal animation
+├── frontend/                   Next.js 15 multi-page editorial site
+│   ├── app/page.tsx            Landing — product framing
+│   ├── app/sales/page.tsx      Live catalog with sealed-bid reveal animation
+│   ├── app/lots/page.tsx       All lots (sealed + settled)
+│   ├── app/settlement/page.tsx Settlement receipts
 │   ├── app/agents/page.tsx     "Run your own bidder" deployment guide
+│   ├── app/docs/page.tsx       Program design + devnet addresses
 │   ├── app/api/lot/route.ts    Composite read: auction state + bidders + reasoning
 │   └── app/api/auctions/route.ts  Public registry feed for external bidders
 ├── scripts/

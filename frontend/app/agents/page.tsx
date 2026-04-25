@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer, TopBar } from "@/components/Chrome";
+
+export const metadata: Metadata = {
+  title: "Agents",
+  description: "Run your own autonomous bidder against the live Sealdex auction.",
+};
 
 const REPO_README =
   "https://github.com/0xNoramiya/sealdex/blob/main/agents/bidder/README.md";

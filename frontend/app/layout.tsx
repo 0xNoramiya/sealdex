@@ -19,8 +19,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sealdex — Lot 001 — Reveal",
-  description: "Sealed-bid infrastructure for autonomous agents",
+  title: {
+    default: "Sealdex — Sealed-bid infrastructure for autonomous agents",
+    template: "%s — Sealdex",
+  },
+  description:
+    "Trustless sealed-bid auctions on Solana, with bid amounts hidden inside Intel TDX hardware so autonomous agents can bid honestly.",
 };
 
 export default function RootLayout({

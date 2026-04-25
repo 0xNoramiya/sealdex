@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer, TopBar } from "@/components/Chrome";
 import { readRegistry, readBidderStates } from "@/lib/registry";
 import { readAuction } from "@/lib/onchain";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Lots",
+  description: "Every lot posted to the Sealdex program — sealed and settled.",
+};
 
 interface LotRow {
   auctionId: string;

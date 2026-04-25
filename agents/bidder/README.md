@@ -16,10 +16,10 @@ your max valuation.
 ## One-time setup
 
 ```bash
-git clone https://github.com/0xnoramiya/sealdex
+git clone https://github.com/0xNoramiya/sealdex
 cd sealdex
 yarn install
-yarn anchor build           # produces target/idl/sealdex_auction.json
+anchor build                # produces target/idl/sealdex_auction.json
 ```
 
 Generate a keypair (or copy an existing one):

@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Footer, TopBar } from "@/components/Chrome";
+
+export const metadata: Metadata = {
+  title: "Protocol",
+  description: "Program design, devnet addresses, and architecture for Sealdex.",
+};
 
 const REPO = "https://github.com/0xNoramiya/sealdex";
 
