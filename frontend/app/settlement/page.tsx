@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Footer, TopBar } from "@/components/Chrome";
 import { readRegistry, readBidderStates } from "@/lib/registry";
 import { readAuction } from "@/lib/onchain";
+import { explorerAddress } from "@/lib/explorer";
 
 export const dynamic = "force-dynamic";
 
@@ -147,9 +148,15 @@ export default async function SettlementPage() {
                       </h2>
                       <div className="mt-3 text-[13px] leading-[1.7] text-ink2">
                         Settled privately to{" "}
-                        <span className="text-accent2 font-medium">
+                        <a
+                          href={explorerAddress(r.winner)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent2 font-medium hover:underline decoration-rule underline-offset-2"
+                          title="Open winner address on Solana Explorer"
+                        >
                           {shortPubkey(r.winner)}
-                        </span>{" "}
+                        </a>{" "}
                         at{" "}
                         <span className="ff-serif text-[15px] tab-nums text-ink">
                           ${r.winningBidUsdc.toLocaleString()}
@@ -158,7 +165,15 @@ export default async function SettlementPage() {
                         discarded inside the enclave.
                       </div>
                       <div className="mt-4 flex items-center gap-4 text-[11.5px] text-dim ff-mono">
-                        <span>auction {shortPubkey(r.auctionPda)}</span>
+                        <a
+                          href={explorerAddress(r.auctionPda)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:text-accent2 underline decoration-rule underline-offset-2"
+                          title="Open auction PDA on Solana Explorer"
+                        >
+                          auction {shortPubkey(r.auctionPda)}
+                        </a>
                         <span className="text-muted">·</span>
                         <span>{r.totalBidders} bidders sealed</span>
                         <span className="text-muted">·</span>

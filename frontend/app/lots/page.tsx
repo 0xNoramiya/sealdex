@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Footer, TopBar } from "@/components/Chrome";
 import { readRegistry, readBidderStates } from "@/lib/registry";
 import { readAuction } from "@/lib/onchain";
+import { explorerAddress } from "@/lib/explorer";
 
 export const dynamic = "force-dynamic";
 
@@ -185,10 +186,9 @@ export default async function LotsPage() {
                 <div className="col-span-2 text-right">Status</div>
               </div>
               {rows.map((r) => (
-                <Link
+                <div
                   key={r.auctionId}
-                  href="/sales"
-                  className="grid grid-cols-12 px-6 py-5 items-center border-b border-rule last:border-b-0 hover:bg-paper transition-colors group"
+                  className="grid grid-cols-12 px-6 py-5 items-center border-b border-rule last:border-b-0 hover:bg-paper transition-colors"
                 >
                   <div className="col-span-4 flex items-center gap-4">
                     <div
@@ -209,11 +209,22 @@ export default async function LotsPage() {
                       <div className="ff-serif text-[16px] text-ink truncate">
                         {r.title}
                       </div>
-                      <div className="ff-mono text-[10.5px] text-muted mt-1">
-                        {shortPubkey(r.auctionPda)} ·{" "}
-                        {r.status === "Open"
-                          ? fmtTimeLeft(r.endTimeUnix - now)
-                          : "ended"}
+                      <div className="flex items-center gap-2 mt-1">
+                        <a
+                          href={explorerAddress(r.auctionPda)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ff-mono text-[10.5px] text-muted hover:text-accent2 underline decoration-rule underline-offset-2"
+                          title="Open auction PDA on Solana Explorer"
+                        >
+                          {shortPubkey(r.auctionPda)}
+                        </a>
+                        <span className="text-muted">·</span>
+                        <span className="ff-mono text-[10.5px] text-muted">
+                          {r.status === "Open"
+                            ? fmtTimeLeft(r.endTimeUnix - now)
+                            : "ended"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -249,16 +260,22 @@ export default async function LotsPage() {
                       <div className="text-[13px] text-muted">—</div>
                     )}
                     {r.status !== "Open" && r.winner && (
-                      <div className="ff-mono text-[10.5px] text-muted mt-1">
+                      <a
+                        href={explorerAddress(r.winner)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ff-mono text-[10.5px] text-muted hover:text-accent2 underline decoration-rule underline-offset-2 mt-1 inline-block"
+                        title="Open winner address on Solana Explorer"
+                      >
                         {shortPubkey(r.winner)}
-                      </div>
+                      </a>
                     )}
                   </div>
 
                   <div className="col-span-2 text-right">
                     <StatusPill status={r.status} />
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           )}

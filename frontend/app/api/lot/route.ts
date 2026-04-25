@@ -18,6 +18,9 @@ export interface LotResponse {
   hasLiveData: boolean;
   auctionId: string | null;
   auctionPda: string | null;
+  // Signature of the create_auction transaction. Useful for surfacing an
+  // Explorer link to the on-chain proof that the auction exists.
+  signature: string | null;
   endTimeUnix: number | null;
   status: AuctionView["status"] | null;
   winner: string | null;
@@ -26,7 +29,8 @@ export interface LotResponse {
   lot: Record<string, any> | null;
   bidders: Array<{
     name: string;
-    pubkey: string;
+    pubkey: string;       // Display string (shortened)
+    pubkeyFull: string;   // Full base58 pubkey for Explorer links
     tag: string;
     agentSlug: string;
     bidPlaced: boolean;
@@ -66,6 +70,7 @@ export async function GET(req: Request) {
       hasLiveData: false,
       auctionId: null,
       auctionPda: null,
+      signature: null,
       endTimeUnix: null,
       status: null,
       winner: null,
@@ -112,6 +117,7 @@ export async function GET(req: Request) {
       return {
         name,
         pubkey: pubkey ? shortPubkey(pubkey) : "—",
+        pubkeyFull: pubkey ?? "",
         tag,
         agentSlug: s.agentSlug,
         bidPlaced: !!placed && placed.amountUsdc > 0,
@@ -144,6 +150,7 @@ export async function GET(req: Request) {
     hasLiveData: true,
     auctionId: entry.auctionId,
     auctionPda: entry.auctionPda,
+    signature: entry.signature ?? null,
     endTimeUnix: auction?.endTimeUnix ?? entry.endTimeUnix,
     status: auction?.status ?? "Open",
     winner: auction?.winner ?? null,

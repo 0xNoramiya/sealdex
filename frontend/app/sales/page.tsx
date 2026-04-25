@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Footer, TopBar } from "@/components/Chrome";
+import {
+  explorerAddress,
+  explorerTx,
+  shortPubkey,
+  shortSig,
+} from "@/lib/explorer";
 import type { LotResponse } from "../api/lot/route";
 
 /* ─── Mock bids (used only when no live data is available) ─── */
@@ -783,12 +789,38 @@ export default function Page() {
                     </span>{" "}
                     USDC.
                   </div>
-                  <div className="mt-1 text-[12px] text-dim">
-                    Paid via Private Payments API · Loser bids never disclosed ·
-                    Receipt&nbsp;
-                    <span className="ff-mono text-[11px] text-ink2 underline decoration-rule underline-offset-2">
-                      0x7e2a…f10c
-                    </span>
+                  <div className="mt-1 text-[12px] text-dim flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>Paid via Private Payments API</span>
+                    <span className="text-muted">·</span>
+                    <span>Loser bids never disclosed</span>
+                    {hasLive && lot?.auctionPda && (
+                      <>
+                        <span className="text-muted">·</span>
+                        <span>Auction</span>
+                        <a
+                          href={explorerAddress(lot.auctionPda)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ff-mono text-[11px] text-ink2 underline decoration-rule underline-offset-2 hover:text-accent2"
+                        >
+                          {shortPubkey(lot.auctionPda)}
+                        </a>
+                      </>
+                    )}
+                    {hasLive && lot?.signature && (
+                      <>
+                        <span className="text-muted">·</span>
+                        <span>Tx</span>
+                        <a
+                          href={explorerTx(lot.signature)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ff-mono text-[11px] text-ink2 underline decoration-rule underline-offset-2 hover:text-accent2"
+                        >
+                          {shortSig(lot.signature)}
+                        </a>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
