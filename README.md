@@ -221,7 +221,7 @@ Solana wallet can run their own bidder against a deployed Sealdex frontend:
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-…
 export SOLANA_RPC_URL="https://devnet.helius-rpc.com/?api-key=<your-key>"
-export SEALDEX_REGISTRY_URL="https://your-sealdex-deployment.example/api/auctions"
+export SEALDEX_REGISTRY_URL="https://sealdex.fly.dev/api/auctions"
 export SEALDEX_STATE_DIR="$PWD/state"
 
 yarn tsx agents/bidder/index.ts agents/bidder/configs/my-bidder.json
