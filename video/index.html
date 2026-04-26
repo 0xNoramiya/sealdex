@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #F5EDE0;
+      }
+      body {
+        font-family: "Fraunces", serif;
+        font-optical-sizing: auto;
+        color: #1A1A1A;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* === Composition palette === */
+      :root {
+        --paper: #F5EDE0;
+        --card: #FFFFFF;
+        --ink: #1A1A1A;
+        --ink2: #3A372F;
+        --dim: #6B6557;
+        --rule: #D9CFBE;
+        --accent: #1F5F4A;
+        --accent2: #1E8B66;
+        --amber: #A8966B;
+        --red: #8B2E2E;
+      }
+
+      .mono {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+      .eyebrow {
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+      .eyebrow.eb-ink { color: #1A1A1A; }
+
+      /* Scenes are full-bleed and stacked. The master timeline crossfades
+         them. Default opacity 0 + visibility hidden so inactive scenes are
+         truly invisible (and skipped by tooling that samples rendered text
+         contrast). Scene 1 gets toggled visible via tl.set at t=0. */
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        opacity: 0;
+        visibility: hidden;
+        background: #F5EDE0;
+      }
+
+      /* === Top + bottom chrome === */
+      .chrome-top {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 80px;
+        padding: 0 96px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #D9CFBE;
+      }
+      .chrome-top .brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+      .diamond {
+        width: 22px; height: 22px;
+        border: 2px solid #1A1A1A;
+        border-radius: 4px;
+        background: #1A1A1A;
+        transform: rotate(45deg);
+      }
+      .wordmark {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 24px;
+        letter-spacing: -0.01em;
+        color: #1A1A1A;
+      }
+      .pill {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        padding: 6px 12px;
+        border: 1px solid #D9CFBE;
+        color: #6B6557;
+      }
+      .tee-status {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #1E8B66;
+      }
+      .tee-label {
+        font-size: 14px;
+        color: #6B6557;
+      }
+      .tee-enclave {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        color: #6B6557;
+      }
+
+      .chrome-bottom {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        height: 60px;
+        padding: 0 96px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid #D9CFBE;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+
+      /* === Scene 1 — Cold open === */
+      .s1 .stage {
+        position: absolute;
+        inset: 80px 96px 60px 96px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 0 80px;
+      }
+      .s1 .display {
+        font-family: "Fraunces", serif;
+        font-weight: 600;
+        font-size: 220px;
+        line-height: 0.96;
+        letter-spacing: -0.04em;
+        color: #1A1A1A;
+      }
+      .s1 .tagline {
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 44px;
+        line-height: 1.3;
+        color: #3A372F;
+        margin-top: 36px;
+        max-width: 1200px;
+      }
+      .s1 .meta-row {
+        margin-top: 64px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 16px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+      .s1 .meta-row .sep {
+        width: 60px;
+        height: 1px;
+        background: #D9CFBE;
+      }
+
+      /* === Scene 2 — Problem === */
+      .s2 .stage {
+        position: absolute;
+        inset: 80px 96px 60px 96px;
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        column-gap: 100px;
+        align-items: center;
+        padding: 0 64px;
+      }
+      .s2 .left .eyebrow { margin-bottom: 28px; }
+      .s2 .headline {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 110px;
+        line-height: 1.0;
+        letter-spacing: -0.025em;
+        color: #1A1A1A;
+        max-width: 880px;
+      }
+      .s2 .body {
+        margin-top: 36px;
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 28px;
+        line-height: 1.55;
+        color: #3A372F;
+        max-width: 760px;
+      }
+      .s2 .body + .body { margin-top: 18px; }
+
+      .s2 .right { display: flex; justify-content: center; }
+      .leak-card {
+        width: 480px;
+        background: #FFFFFF;
+        border: 1px solid #D9CFBE;
+        padding: 36px 40px;
+        position: relative;
+      }
+      .leak-card .label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+      .leak-card .pubkey {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 22px;
+        color: #1A1A1A;
+        margin-top: 8px;
+      }
+      .leak-card .divider {
+        height: 1px;
+        background: #D9CFBE;
+        margin: 28px 0;
+      }
+      .leak-card .max-bid-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+      .leak-card .max-bid {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 76px;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        margin-top: 6px;
+      }
+      .leak-card .status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 28px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .leak-card .status .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+      }
+      .leak-card.exposed .max-bid { color: #8B2E2E; }
+      .leak-card.exposed .status { color: #8B2E2E; }
+      .leak-card.exposed .status .dot { background: #8B2E2E; }
+      .leak-card.sealed .max-bid { color: #8B7A4D; }
+      .leak-card.sealed .status { color: #1F5F4A; }
+      .leak-card.sealed .status .dot { background: #1F5F4A; }
+      .leak-card .stamp {
+        position: absolute;
+        top: 36px;
+        right: 40px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        letter-spacing: 0.22em;
+        color: #6B6557;
+      }
+
+      /* === Scene 3 — Solution === */
+      .s3 .stage {
+        position: absolute;
+        inset: 80px 96px 60px 96px;
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        column-gap: 100px;
+        align-items: center;
+        padding: 0 64px;
+      }
+      .s3 .left { display: flex; justify-content: center; }
+      .s3 .right .eyebrow { margin-bottom: 28px; }
+      .s3 .headline {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 100px;
+        line-height: 1.02;
+        letter-spacing: -0.025em;
+        color: #1A1A1A;
+      }
+      .s3 .body {
+        margin-top: 32px;
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 28px;
+        line-height: 1.55;
+        color: #3A372F;
+        max-width: 720px;
+      }
+
+      /* === Scene 4 — How it works === */
+      .s4 .stage {
+        position: absolute;
+        inset: 80px 96px 60px 96px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 64px 80px;
+      }
+      .s4 .heading-row {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        column-gap: 80px;
+        align-items: end;
+        margin-bottom: 56px;
+      }
+      .s4 .heading-row .eyebrow { margin-bottom: 16px; }
+      .s4 .heading-row .title {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 96px;
+        line-height: 1;
+        letter-spacing: -0.025em;
+        color: #1A1A1A;
+      }
+      .s4 .heading-row .sub {
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 26px;
+        line-height: 1.55;
+        color: #6B6557;
+        max-width: 620px;
+      }
+      .s4 .ix-row {
+        display: grid;
+        grid-template-columns: 60px 360px 220px 1fr;
+        column-gap: 32px;
+        padding: 26px 0;
+        align-items: baseline;
+        border-top: 1px solid #D9CFBE;
+      }
+      .s4 .ix-row .num {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        color: #6B6557;
+      }
+      .s4 .ix-row .name {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 28px;
+        color: #1A1A1A;
+      }
+      .s4 .ix-row .layer {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 14px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #1F5F4A;
+      }
+      .s4 .ix-row .desc {
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 22px;
+        line-height: 1.5;
+        color: #3A372F;
+      }
+
+      /* === Scene 5 — Demo handoff === */
+      .s5 .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 0 96px;
+      }
+      .s5 .splice-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: #1F5F4A;
+      }
+      .s5 .display {
+        margin-top: 36px;
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 168px;
+        line-height: 0.98;
+        letter-spacing: -0.035em;
+        color: #1A1A1A;
+        text-align: center;
+      }
+      .s5 .frame-marker {
+        margin-top: 80px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 16px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+      .s5 .frame-marker .bracket {
+        width: 80px;
+        height: 1px;
+        background: #1F5F4A;
+      }
+      .s5 .splice-cue {
+        position: absolute;
+        bottom: 96px;
+        left: 0; right: 0;
+        text-align: center;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+
+      /* === Scene 6 — Agents === */
+      .s6 .stage {
+        position: absolute;
+        inset: 80px 96px 60px 96px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 32px 64px;
+      }
+      .s6 .heading {
+        margin-bottom: 56px;
+      }
+      .s6 .heading .eyebrow { margin-bottom: 16px; }
+      .s6 .heading .title {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 92px;
+        line-height: 1;
+        letter-spacing: -0.025em;
+        color: #1A1A1A;
+        max-width: 1500px;
+      }
+      .s6 .paths {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        column-gap: 36px;
+      }
+      .s6 .path-card {
+        background: #FFFFFF;
+        border: 1px solid #D9CFBE;
+        padding: 36px 36px 40px;
+      }
+      .s6 .path-card .num {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        color: #6B6557;
+      }
+      .s6 .path-card .name {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 36px;
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+        color: #1A1A1A;
+        margin-top: 14px;
+      }
+      .s6 .path-card .badge {
+        display: inline-block;
+        margin-top: 16px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #6B6557;
+        padding: 5px 10px;
+        border: 1px solid #D9CFBE;
+      }
+      .s6 .path-card .body {
+        margin-top: 24px;
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 22px;
+        line-height: 1.5;
+        color: #3A372F;
+      }
+      .s6 .path-card .code {
+        margin-top: 22px;
+        background: #F5EDE0;
+        border: 1px solid #D9CFBE;
+        padding: 16px 18px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 16px;
+        line-height: 1.45;
+        color: #3A372F;
+      }
+
+      /* === Scene 7 — Close === */
+      .s7 .stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 0 96px;
+      }
+      .s7 .display {
+        font-family: "Fraunces", serif;
+        font-weight: 600;
+        font-size: 220px;
+        line-height: 0.96;
+        letter-spacing: -0.04em;
+        color: #1A1A1A;
+      }
+      .s7 .tagline {
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: 40px;
+        line-height: 1.3;
+        color: #3A372F;
+        margin-top: 36px;
+        text-align: center;
+      }
+      .s7 .url-row {
+        margin-top: 64px;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 18px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #6B6557;
+      }
+      .s7 .url-row .url {
+        color: #1F5F4A;
+      }
+      .s7 .url-row .sep {
+        width: 40px; height: 1px; background: #D9CFBE;
+      }
+
+      /* Decorative — soft top vignette across all scenes */
+      .scene::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(60% 35% at 50% 0%, rgba(20,23,28,0.04), rgba(20,23,28,0));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="143"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- ─── SCENE 1 — Cold open ─── -->
+      <div class="scene s1">
+        <div class="chrome-top">
+          <div class="brand">
+            <div class="diamond"></div>
+            <div class="wordmark">Sealdex</div>
+            <div class="pill">Devnet</div>
+          </div>
+          <div class="tee-status">
+            <div class="pulse-dot"></div>
+            <div class="tee-label">TEE Verified</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="display">Sealdex</div>
+          <div class="tagline">Sealed-bid infrastructure for autonomous agents.</div>
+          <div class="meta-row">
+            <span>Encrypted</span>
+            <span class="sep"></span>
+            <span>TEE-attested</span>
+            <span class="sep"></span>
+            <span>Solana</span>
+          </div>
+        </div>
+
+        <div class="chrome-bottom">
+          <span>Demo · 2026</span>
+          <span>sealdex.fly.dev</span>
+        </div>
+      </div>
+
+      <!-- ─── SCENE 2 — The problem ─── -->
+      <div class="scene s2">
+        <div class="chrome-top">
+          <div class="brand">
+            <div class="diamond"></div>
+            <div class="wordmark">Sealdex</div>
+            <div class="pill">Devnet</div>
+          </div>
+          <div class="tee-status">
+            <div class="pulse-dot"></div>
+            <div class="tee-label">TEE Verified</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="left">
+            <div class="eyebrow">The problem</div>
+            <div class="headline">AI bidding agents leak their valuations.</div>
+            <div class="body">On a public mempool, every signed transaction carries its bid amount in cleartext. An autonomous agent broadcasts its max valuation to anyone scraping the chain.</div>
+            <div class="body">The cost is structural — anyone can outbid by a single dollar and capture the entire surplus.</div>
+          </div>
+
+          <div class="right">
+            <div class="leak-card exposed">
+              <div class="label">Wallet</div>
+              <div class="pubkey">0x4f8c…a72c</div>
+              <div class="stamp">Bidder Alpha</div>
+              <div class="divider"></div>
+              <div class="max-bid-label">Max Bid</div>
+              <div class="max-bid">$ 3,400</div>
+              <div class="status">
+                <span class="dot"></span>
+                <span>Exposed · public mempool</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chrome-bottom">
+          <span>Public bidding · Today</span>
+          <span>Mempool ◯ visible</span>
+        </div>
+      </div>
+
+      <!-- ─── SCENE 3 — The solution ─── -->
+      <div class="scene s3">
+        <div class="chrome-top">
+          <div class="brand">
+            <div class="diamond"></div>
+            <div class="wordmark">Sealdex</div>
+            <div class="pill">Devnet</div>
+          </div>
+          <div class="tee-status">
+            <div class="pulse-dot"></div>
+            <div class="tee-label">TEE Verified</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="left">
+            <div class="leak-card sealed">
+              <div class="label">Wallet</div>
+              <div class="pubkey">0x4f8c…a72c</div>
+              <div class="stamp">Bidder Alpha</div>
+              <div class="divider"></div>
+              <div class="max-bid-label">Max Bid</div>
+              <div class="max-bid">$ ••• ,•••</div>
+              <div class="status">
+                <span class="dot"></span>
+                <span>Sealed · Intel TDX</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="right">
+            <div class="eyebrow">The solution</div>
+            <div class="headline">Sealed bids, attested by hardware.</div>
+            <div class="body">Sealdex moves the bidding window into MagicBlock's Private Ephemeral Rollup. Bid amounts are encrypted inside Intel TDX hardware until the seller calls reveal — and only the winner is committed back to base Solana. Losing bids are discarded without disclosure.</div>
+          </div>
+        </div>
+
+        <div class="chrome-bottom">
+          <span>Sealed bidding · Sealdex</span>
+          <span>Mempool ◐ obscured</span>
+        </div>
+      </div>
+
+      <!-- ─── SCENE 4 — How it works ─── -->
+      <div class="scene s4">
+        <div class="chrome-top">
+          <div class="brand">
+            <div class="diamond"></div>
+            <div class="wordmark">Sealdex</div>
+            <div class="pill">Devnet</div>
+          </div>
+          <div class="tee-status">
+            <div class="pulse-dot"></div>
+            <div class="tee-label">TEE Verified</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="heading-row">
+            <div>
+              <div class="eyebrow">Architecture</div>
+              <div class="title">Four instructions. One enclave.</div>
+            </div>
+            <div class="sub">Anchor program on Solana base layer. Auction and Bid accounts are immediately delegated to a TEE validator and stay sealed until settlement.</div>
+          </div>
+
+          <div class="ix-list">
+            <div class="ix-row">
+              <div class="num">01</div>
+              <div class="name">create_auction</div>
+              <div class="layer">Base layer</div>
+              <div class="desc">Seller posts the lot, init Auction PDA + permission, delegate to TEE validator.</div>
+            </div>
+            <div class="ix-row">
+              <div class="num">02</div>
+              <div class="name">place_bid</div>
+              <div class="layer">Base → TEE</div>
+              <div class="desc">Bid PDA created with sealed amount, delegated to TEE in the same transaction.</div>
+            </div>
+            <div class="ix-row">
+              <div class="num">03</div>
+              <div class="name">settle_auction</div>
+              <div class="layer">In-TEE</div>
+              <div class="desc">Iterate bids inside the enclave, find max, commit winner back to base Solana.</div>
+            </div>
+            <div class="ix-row">
+              <div class="num">04</div>
+              <div class="name">claim_lot</div>
+              <div class="layer">Base layer</div>
+              <div class="desc">Winner claims, escrow agent triggers payment via Private Payments API.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chrome-bottom">
+          <span>Anchor 0.32.1 · ephemeral-rollups-sdk 0.11</span>
+          <span>4DBE…wEMJ</span>
+        </div>
+      </div>
+
+      <!-- ─── SCENE 5 — Demo handoff ─── -->
+      <div class="scene s5">
+        <div class="chrome-top">
+          <div class="brand">
+            <div class="diamond"></div>
+            <div class="wordmark">Sealdex</div>
+            <div class="pill">Demo</div>
+          </div>
+          <div class="tee-status">
+            <div class="pulse-dot"></div>
+            <div class="tee-label">Live capture</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="display">Let&rsquo;s see it in action.</div>
+        </div>
+      </div>
+
+      <!-- ─── SCENE 6 — Agents ─── -->
+      <div class="scene s6">
+        <div class="chrome-top">
+          <div class="brand">
+            <div class="diamond"></div>
+            <div class="wordmark">Sealdex</div>
+            <div class="pill">Devnet</div>
+          </div>
+          <div class="tee-status">
+            <div class="pulse-dot"></div>
+            <div class="tee-label">TEE Verified</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="heading">
+            <div class="eyebrow">Agent-native</div>
+            <div class="title">Anyone with an AI runtime is a bidder.</div>
+          </div>
+
+          <div class="paths">
+            <div class="path-card">
+              <div class="num">PATH 01</div>
+              <div class="name">Clone the standalone bidder.</div>
+              <div class="badge">Node script</div>
+              <div class="body">Reference Node loop. Bring your Anthropic key. Polls /api/auctions every 5 seconds.</div>
+              <div class="code">yarn tsx<br/>agents/bidder/index.ts<br/>configs/my-bidder.json</div>
+            </div>
+            <div class="path-card">
+              <div class="num">PATH 02</div>
+              <div class="name">Connect via MCP.</div>
+              <div class="badge">Cursor · Claude · custom</div>
+              <div class="body">Drop the Sealdex MCP server into your client config. Tools become first-class in any conversation.</div>
+              <div class="code">{<br/>&nbsp;&nbsp;"sealdex": {<br/>&nbsp;&nbsp;&nbsp;&nbsp;"command": "node",<br/>&nbsp;&nbsp;&nbsp;&nbsp;"args": ["mcp-server"]<br/>&nbsp;&nbsp;}<br/>}</div>
+            </div>
+            <div class="path-card">
+              <div class="num">PATH 03</div>
+              <div class="name">Open the repo in any agent.</div>
+              <div class="badge">Claude Code · Codex · Aider</div>
+              <div class="body">AGENTS.md ships with the bidder persona, rules, and tools. Open the repo and prompt the agent to start.</div>
+              <div class="code">$ open sealdex<br/>&gt; act as the<br/>&nbsp;&nbsp;Sealdex bidder.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chrome-bottom">
+          <span>AGENTS.md · .mcp.json</span>
+          <span>sealdex.fly.dev/agents</span>
+        </div>
+      </div>
+
+      <!-- ─── SCENE 7 — Close ─── -->
+      <div class="scene s7">
+        <div class="stage">
+          <div class="display">Sealdex</div>
+          <div class="tagline">Sealed-bid infrastructure for autonomous agents.</div>
+          <div class="url-row">
+            <span class="url">sealdex.fly.dev</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      /* ────────────────────────────────────────────────────────
+         SCENE TIMING
+         s1 cold open       0     – 8       (8s)
+         s2 problem         7.5   – 35      (27s, 0.5s xfade in)
+         s3 solution        34.5  – 57      (22s)
+         s4 architecture    56.5  – 85      (28s)
+         s5 demo handoff    84.5  – 100     (15s)
+         s6 agents          99.5  – 132     (32s)
+         s7 close           131.5 – 143     (~11.5s)
+         Total: 143s = 2:23
+         ──────────────────────────────────────────────────────── */
+
+      // Pulse-dot ambient — finite repeat across the whole composition
+      const pulseRepeat = Math.ceil(143 / 1.8) - 1;
+      const pulse = gsap.timeline({ repeat: pulseRepeat });
+      pulse.to(".pulse-dot", { scale: 1.6, opacity: 0.55, duration: 0.9, ease: "sine.inOut" })
+           .to(".pulse-dot", { scale: 1.0, opacity: 1.0, duration: 0.9, ease: "sine.inOut" });
+      tl.add(pulse, 0);
+
+      // ─── SCENE 1 (0–8s) ───────────────────────────────────────
+      tl.set(".s1", { opacity: 1, visibility: "visible" }, 0);
+      tl.from(".s1 .chrome-top", { y: -80, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.15);
+      tl.from(".s1 .display", { y: 60, opacity: 0, duration: 1.0, ease: "expo.out" }, 0.4);
+      tl.from(".s1 .tagline", { y: 30, opacity: 0, duration: 0.7, ease: "power2.out" }, 0.9);
+      tl.from(".s1 .meta-row > *", { y: 16, opacity: 0, duration: 0.55, stagger: 0.08, ease: "power2.out" }, 1.4);
+      tl.from(".s1 .chrome-bottom", { y: 60, opacity: 0, duration: 0.6, ease: "power2.out" }, 1.0);
+
+      // ─── TRANSITION s1 → s2 (7.5–8s) — blur crossfade ────────
+      tl.set(".s2", { visibility: "visible" }, 7.5);
+      tl.to(".s1", { opacity: 0, filter: "blur(12px)", duration: 0.6, ease: "sine.inOut" }, 7.5);
+      tl.to(".s2", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 7.5);
+      tl.set(".s1", { visibility: "hidden", display: "none" }, 8.2);
+
+      // ─── SCENE 2 (8–34.5s) ────────────────────────────────────
+      tl.from(".s2 .chrome-top", { y: -60, opacity: 0, duration: 0.5, ease: "power2.out" }, 7.7);
+      tl.from(".s2 .left .eyebrow", { y: 16, opacity: 0, duration: 0.5, ease: "power2.out" }, 8.0);
+      tl.from(".s2 .headline", { y: 50, opacity: 0, duration: 0.9, ease: "expo.out" }, 8.2);
+      tl.from(".s2 .left .body", { y: 20, opacity: 0, duration: 0.6, ease: "power2.out", stagger: 0.4 }, 8.9);
+      tl.from(".s2 .leak-card", { x: 60, opacity: 0, duration: 0.8, ease: "power3.out" }, 9.0);
+      tl.from(".s2 .leak-card .stamp", { opacity: 0, duration: 0.4, ease: "power1.out" }, 9.6);
+      tl.from(".s2 .leak-card .max-bid", { opacity: 0, scale: 0.96, duration: 0.7, ease: "power3.out" }, 9.6);
+      tl.from(".s2 .leak-card .status", { opacity: 0, duration: 0.5, ease: "power2.out" }, 10.0);
+      tl.from(".s2 .chrome-bottom", { y: 60, opacity: 0, duration: 0.5, ease: "power2.out" }, 8.4);
+
+      // ─── TRANSITION s2 → s3 (34.5–35s) ────────────────────────
+      tl.set(".s3", { visibility: "visible" }, 34.5);
+      tl.to(".s2", { opacity: 0, filter: "blur(12px)", duration: 0.6, ease: "sine.inOut" }, 34.5);
+      tl.to(".s3", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 34.5);
+      tl.set(".s2", { visibility: "hidden", display: "none" }, 35.2);
+
+      // ─── SCENE 3 (35–56.5s) ───────────────────────────────────
+      tl.from(".s3 .chrome-top", { y: -60, opacity: 0, duration: 0.5, ease: "power2.out" }, 34.8);
+      tl.from(".s3 .leak-card", { x: -60, opacity: 0, duration: 0.8, ease: "power3.out" }, 35.0);
+      tl.from(".s3 .leak-card .max-bid", { opacity: 0, scale: 0.96, duration: 0.7, ease: "power3.out" }, 35.6);
+      tl.from(".s3 .leak-card .status", { opacity: 0, duration: 0.5, ease: "power2.out" }, 36.0);
+      tl.from(".s3 .right .eyebrow", { y: 16, opacity: 0, duration: 0.5, ease: "power2.out" }, 35.4);
+      tl.from(".s3 .headline", { y: 50, opacity: 0, duration: 0.9, ease: "expo.out" }, 35.6);
+      tl.from(".s3 .body", { y: 20, opacity: 0, duration: 0.6, ease: "power2.out" }, 36.4);
+      tl.from(".s3 .chrome-bottom", { y: 60, opacity: 0, duration: 0.5, ease: "power2.out" }, 35.4);
+
+      // ─── TRANSITION s3 → s4 (56.5–57s) ────────────────────────
+      tl.set(".s4", { visibility: "visible" }, 56.5);
+      tl.to(".s3", { opacity: 0, filter: "blur(12px)", duration: 0.6, ease: "sine.inOut" }, 56.5);
+      tl.to(".s4", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 56.5);
+      tl.set(".s3", { visibility: "hidden", display: "none" }, 57.2);
+
+      // ─── SCENE 4 (57–84.5s) ───────────────────────────────────
+      tl.from(".s4 .chrome-top", { y: -60, opacity: 0, duration: 0.5, ease: "power2.out" }, 56.8);
+      tl.from(".s4 .heading-row .eyebrow", { y: 16, opacity: 0, duration: 0.5, ease: "power2.out" }, 57.0);
+      tl.from(".s4 .heading-row .title", { y: 40, opacity: 0, duration: 0.85, ease: "expo.out" }, 57.2);
+      tl.from(".s4 .heading-row .sub", { y: 20, opacity: 0, duration: 0.6, ease: "power2.out" }, 57.7);
+      tl.from(".s4 .ix-row", {
+        y: 30, opacity: 0, duration: 0.55, ease: "power3.out", stagger: 0.18
+      }, 58.6);
+      tl.from(".s4 .chrome-bottom", { y: 60, opacity: 0, duration: 0.5, ease: "power2.out" }, 57.4);
+
+      // ─── TRANSITION s4 → s5 (84.5–85s) ────────────────────────
+      tl.set(".s5", { visibility: "visible" }, 84.5);
+      tl.to(".s4", { opacity: 0, filter: "blur(12px)", duration: 0.6, ease: "sine.inOut" }, 84.5);
+      tl.to(".s5", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 84.5);
+      tl.set(".s4", { visibility: "hidden", display: "none" }, 85.2);
+
+      // ─── SCENE 5 (85–99.5s) — demo handoff ────────────────────
+      tl.from(".s5 .chrome-top", { y: -60, opacity: 0, duration: 0.5, ease: "power2.out" }, 84.8);
+      tl.from(".s5 .display", { y: 60, opacity: 0, duration: 1.0, ease: "expo.out" }, 85.2);
+      // Title holds through to 99.5s — splice-friendly static frame.
+
+      // ─── TRANSITION s5 → s6 (99.5–100s) ───────────────────────
+      tl.set(".s6", { visibility: "visible" }, 99.5);
+      tl.to(".s5", { opacity: 0, filter: "blur(12px)", duration: 0.6, ease: "sine.inOut" }, 99.5);
+      tl.to(".s6", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 99.5);
+      tl.set(".s5", { visibility: "hidden", display: "none" }, 100.2);
+
+      // ─── SCENE 6 (100–131.5s) — agents ────────────────────────
+      tl.from(".s6 .chrome-top", { y: -60, opacity: 0, duration: 0.5, ease: "power2.out" }, 99.8);
+      tl.from(".s6 .heading .eyebrow", { y: 16, opacity: 0, duration: 0.5, ease: "power2.out" }, 100.0);
+      tl.from(".s6 .heading .title", { y: 40, opacity: 0, duration: 0.85, ease: "expo.out" }, 100.2);
+      tl.from(".s6 .path-card", {
+        y: 50, opacity: 0, duration: 0.7, ease: "power3.out", stagger: 0.22
+      }, 101.2);
+      tl.from(".s6 .path-card .code", {
+        opacity: 0, duration: 0.5, ease: "power2.out", stagger: 0.22
+      }, 102.4);
+      tl.from(".s6 .chrome-bottom", { y: 60, opacity: 0, duration: 0.5, ease: "power2.out" }, 100.6);
+
+      // ─── TRANSITION s6 → s7 (131.5–132.2s) ────────────────────
+      tl.set(".s7", { visibility: "visible" }, 131.5);
+      tl.to(".s6", { opacity: 0, filter: "blur(15px)", duration: 0.7, ease: "sine.inOut" }, 131.5);
+      tl.to(".s7", { opacity: 1, duration: 0.7, ease: "sine.inOut" }, 131.5);
+      tl.set(".s6", { visibility: "hidden", display: "none" }, 132.3);
+
+      // ─── SCENE 7 (132–143s) — close + final fade ──────────────
+      tl.from(".s7 .display", { y: 60, opacity: 0, duration: 1.0, ease: "expo.out" }, 132.0);
+      tl.from(".s7 .tagline", { y: 24, opacity: 0, duration: 0.7, ease: "power2.out" }, 132.6);
+      tl.from(".s7 .url-row", { opacity: 0, y: 12, duration: 0.7, ease: "power2.out" }, 133.2);
+
+      // Final scene — fade to paper at the end (the only allowed exit)
+      tl.to(".s7 .display", { opacity: 0, duration: 1.0, ease: "sine.inOut" }, 141.5);
+      tl.to(".s7 .tagline", { opacity: 0, duration: 1.0, ease: "sine.inOut" }, 141.6);
+      tl.to(".s7 .url-row", { opacity: 0, duration: 1.0, ease: "sine.inOut" }, 141.7);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

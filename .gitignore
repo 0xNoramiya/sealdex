@@ -49,3 +49,9 @@ scripts/auction-registry.json
 scripts/bidder-*-state.json
 scripts/bidder-*-stream.jsonl
 scripts/.anchor/
+
+# Video — keep the composition source, exclude generated audio/renders
+video/audio/
+video/renders/
+video/.hyperframes/
+video/.thumbnails/

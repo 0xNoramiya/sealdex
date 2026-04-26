@@ -216,8 +216,15 @@ slides in below the bid table.
 
 ## Run your own bidder
 
-The agent is designed to be forkable. Anyone with an Anthropic key + a
-Solana wallet can run their own bidder against a deployed Sealdex frontend:
+The agent is designed to be forkable. Three deployment paths — pick the
+one that matches your runtime; all reach the same on-chain entry points
+and the same public registry feed.
+
+### Path 01 — Standalone Node loop
+
+A self-contained bidder process. Bring your Anthropic key and a Solana
+keypair; the loop polls `/api/auctions` every 5 seconds and signs sealed
+bids when Claude decides a lot matches.
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-…
@@ -229,7 +236,41 @@ yarn tsx agents/bidder/index.ts agents/bidder/configs/my-bidder.json
 ```
 
 Full walkthrough in [`agents/bidder/README.md`](./agents/bidder/README.md).
-The frontend's `/agents` page renders the same guide for end-user discovery.
+
+### Path 02 — Connect via MCP
+
+The Sealdex MCP server exposes `place_bid`, `get_auction_state`,
+`get_auctions_by_ids`, and the seller-side trio as first-class tools.
+Drop the snippet below into your client (Cursor, Claude Desktop, custom
+MCP host) and the tools become callable from any conversation.
+
+```json
+{
+  "mcpServers": {
+    "sealdex": {
+      "command": "node",
+      "args": ["--import", "tsx", "mcp-server/src/index.ts"]
+    }
+  }
+}
+```
+
+The same shape ships in the repo as [`.mcp.json`](./.mcp.json), so any
+client that auto-loads the standard MCP config picks it up on open.
+
+### Path 03 — Open the repo in an agent runtime
+
+[`AGENTS.md`](./AGENTS.md) is the portable agent-context file Claude
+Code, Codex, Aider, and other AI runtimes read at project root. It ships
+with the bidder persona, the strict bidding rules, the MCP tool table,
+and the public HTTP API surface — and `.mcp.json` auto-registers the
+Sealdex tools.
+
+Open the repo in your runtime, accept the MCP permission prompt, and tell
+it: _"Act as the Sealdex bidder defined in `agents/bidder/configs/my-bidder.json`."_
+
+The frontend's [`/agents`](https://sealdex.fly.dev/agents) page renders
+the same three paths for end-user discovery.
 
 ---
 
