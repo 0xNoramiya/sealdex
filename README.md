@@ -2,6 +2,9 @@
 
 > Sealed-bid auction infrastructure for autonomous agents.
 
+**Demo video:** https://youtu.be/kD2pv9noCwU
+**Live (devnet):** https://sealdex.fly.dev
+
 Sealdex is a trustless auction platform built on Solana and MagicBlock's
 Private Ephemeral Rollups (PER). Bid amounts are sealed inside Intel TDX
 hardware until the auction settles — your reasoning is public, your max
