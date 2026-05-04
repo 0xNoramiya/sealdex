@@ -21,6 +21,21 @@ kill_timeout = '30s'
   SEALDEX_STATE_DIR = '/data/state'
   SOLANA_RPC_URL = 'https://api.devnet.solana.com'
 
+# Required Fly secrets (set with `fly secrets set NAME=...`):
+#   ANTHROPIC_API_KEY        — operator's Anthropic key for the demo bidders
+#   SEALDEX_SESSION_SECRET   — 32+ char random; HMAC + AES-256-GCM master
+#                              for the BYOK pipeline. Rotation invalidates
+#                              outstanding sessions AND existing encrypted
+#                              creds — never rotate without first wiping
+#                              /data/state/spawns/.
+#   SELLER_KEYPAIR_B64,
+#   BIDDER1_KEYPAIR_B64,
+#   BIDDER2_KEYPAIR_B64      — base64 of the JSON-array keypair files.
+#                              Decoded onto the volume on first boot.
+# Optional:
+#   SEALDEX_BYOK=0           — disables the BYOK spawn-worker (still runs the
+#                              demo bidders + frontend), for debugging.
+
 [[mounts]]
   source = 'sealdex_data'
   destination = '/data'

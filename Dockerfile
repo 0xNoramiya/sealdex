@@ -55,6 +55,14 @@ COPY --from=builder /app/frontend/.next ./frontend/.next
 COPY --from=builder /app/frontend/package.json ./frontend/package.json
 COPY --from=builder /app/frontend/node_modules ./frontend/node_modules
 COPY --from=builder /app/frontend/next.config.mjs ./frontend/next.config.mjs
+# The BYOK spawn-worker is a long-lived sibling Node process that reads
+# its TypeScript source at runtime via tsx. It imports from frontend/lib/
+# (cred-crypto, auth-env, spawn-process, spawn-store) so the source for
+# both folders has to land in the runtime image — `next build` only
+# bakes in the routes, not the worker entry.
+COPY --from=builder /app/frontend/worker ./frontend/worker
+COPY --from=builder /app/frontend/lib ./frontend/lib
+COPY --from=builder /app/frontend/tsconfig.json ./frontend/tsconfig.json
 
 # Entrypoint + cycle scripts (committed to repo).
 COPY scripts/entrypoint.sh /app/entrypoint.sh

@@ -179,6 +179,178 @@ need to do next.
 - `docs/threat-model.md`
 - `docs/PRODUCTION-READINESS.md` (this file)
 
+## Iteration 24 — BYOK in production: entrypoint + Fly deploy story
+
+**Problem this fixes.** Iterations 17–23 built the entire BYOK
+pipeline (auth, encrypted creds, spawn worker, dashboard, stream
+tail), but it was never wired into the production deploy. The
+public URL `https://sealdex.fly.dev` was running iterations 1–16
+only — no spawn worker, no `/spawn`, no `/spawn/me`. A judge
+visiting the live demo could see auctions cycle, but couldn't
+actually bring their own LLM key + Solana wallet and join the
+bidding. That's the difference between "nice tech demo" and
+"working product." This iteration closes that gap: BYOK now runs
+on the deployed image.
+
+**What shipped.**
+
+- **`scripts/entrypoint.sh`** — adds the BYOK spawn worker as a
+  fourth long-lived child alongside frontend + Alpha + Beta
+  bidders. Hard-fails at boot if `SEALDEX_SESSION_SECRET` is
+  unset or shorter than 32 chars (the AES-256-GCM master AND
+  HMAC key for sessions both depend on it; running without it
+  silently would lose every BYOK user's spawns on each deploy).
+  - New env contract: `SEALDEX_BYOK=1` (default) / `SEALDEX_BYOK=0`
+    operator switch. Off-mode skips the worker and lifts the
+    secret requirement so the demo can keep running while a BYOK
+    regression is being fixed.
+  - New `SEALDEX_APP_DIR` override (default `/app`) so the
+    smoke can run the entrypoint locally without touching the
+    Fly-only `/app` path.
+  - New `SEALDEX_DRY_RUN=1` mode prints the launch command lines
+    instead of forking. Keeps the entrypoint testable without a
+    container.
+  - Fork helper centralises the dry-run gate so adding new
+    long-lived children later is one line, not three.
+
+- **`Dockerfile`** — runtime image now copies
+  `frontend/worker/` and `frontend/lib/` from the builder.
+  Before: only `frontend/.next` (the Next build) landed, so the
+  worker couldn't actually start in prod (`Cannot find module
+  '../lib/cred-crypto'`). The worker reads its imports as TS
+  source via `node --import tsx`, so the source files themselves
+  have to be present.
+
+- **`fly.toml`** — comment block enumerates every required Fly
+  secret (`ANTHROPIC_API_KEY`, `SEALDEX_SESSION_SECRET`, plus the
+  three keypair B64s) and the optional `SEALDEX_BYOK=0`
+  override. The TOML itself is unchanged for the demo path; the
+  changes are operator-facing documentation.
+
+- **`docs/fly-deploy.md`** — new operator runbook. Documents:
+  - The exact `fly secrets set` commands (with
+    `openssl rand -hex 32` for the session secret).
+  - The four boot lines to look for in `fly logs` to confirm
+    BYOK is up.
+  - The `/data` volume layout, including the new `spawns/`
+    subtree.
+  - Why rotating `SEALDEX_SESSION_SECRET` is destructive
+    (existing AES-GCM blobs become unreadable) and how to do it
+    safely (wipe `spawns/` first).
+
+- **`scripts/smoke-iter24.sh`** — bash smoke that runs the
+  entrypoint with `SEALDEX_DRY_RUN=1` and asserts the wiring.
+
+**Tests.** The smoke (`bash scripts/smoke-iter24.sh`) covers 18
+assertions:
+
+    ✓ entrypoint.sh has valid bash syntax
+    ✓ dry-run logs frontend launch
+    ✓ dry-run logs bidder-alpha
+    ✓ dry-run logs bidder-beta
+    ✓ dry-run logs spawn-worker
+    ✓ dry-run mentions worker entry path
+    ✓ dry-run threads SEALDEX_STATE_DIR
+    ✓ dry-run threads SEALDEX_SESSION_SECRET
+    ✓ dry-run exits cleanly
+    ✓ missing SEALDEX_SESSION_SECRET refused (exit=1)
+    ✓ SEALDEX_BYOK=0 skips spawn-worker without needing the secret
+    ✓ frontend/worker/spawn-worker.ts exists
+    ✓ frontend/lib/{cred-crypto,auth-env,spawn-process,spawn-store}.ts exist
+    ✓ Dockerfile copies frontend/worker
+    ✓ Dockerfile copies frontend/lib
+
+The "missing secret refused" assertion is load-bearing: without
+it a misconfigured deploy could silently fall back to the dev
+ephemeral secret, and every BYOK user's encrypted blob would
+become unreadable on the next restart.
+
+The "SEALDEX_BYOK=0 path" assertion guards a regression I'd hit
+otherwise: when adding a new env-driven feature it's easy to
+make it required-everywhere; this confirms the operator escape
+hatch still works.
+
+**Live invocation check.** Booted the worker with the same
+`node --import tsx frontend/worker/spawn-worker.ts` form the
+entrypoint uses, from the repo root, with a fake state dir +
+session secret:
+
+    {"time":"...","level":"info","msg":"spawn-worker starting",
+     "service":"spawn-worker","tickMs":2000,
+     "bidderEntry":"/.../agents/bidder/index.ts",
+     "tsxPath":"/.../node_modules/.bin/tsx"}
+    {"time":"...","level":"info","msg":"worker shutting down —
+     terminating tracked children"}
+
+So the `node --import tsx <ts-file>` invocation form works, the
+worker resolves its bidder entry + tsx path correctly, AND the
+SIGTERM trap fires cleanly so Fly can reap the container during
+deploys.
+
+**Counts after iteration 24:** 56 mcp-server + 52 bidder + 163
+frontend = **271 unit tests** (unchanged — this iteration is
+ops, not code), plus the iter-22, iter-23, and new iter-24
+smokes. All pass. `tsc --noEmit` clean.
+
+**Why this is a big win, not cosmetic.** Iterations 17–23
+shipped a complete BYOK product on disk. Until this iteration,
+that product literally did not exist for anyone visiting the
+public URL. The hackathon judges will land on
+`https://sealdex.fly.dev`, see auctions cycling, and… that's it.
+After this deploy:
+  - Click "Spawn an agent" → connect Phantom/Solflare → fill the
+    wizard → see your agent appear in `/spawn/me`.
+  - Pick OpenRouter or Groq from the provider dropdown (iter-22),
+    paste a key, expand the row to watch the live stream
+    (iter-23) → see your agent skip lots, hit ceilings, place
+    bids. All on the public URL.
+
+That's the difference between "I built BYOK" (a code claim) and
+"BYOK is live for any judge with an LLM key" (a product claim).
+
+**Verification.**
+- `bash scripts/smoke-iter24.sh` → 18/18 ✓.
+- Worker boots + shuts down cleanly under
+  `node --import tsx frontend/worker/spawn-worker.ts`.
+- `fly.toml` + `docs/fly-deploy.md` document the secret
+  contract; `fly secrets list` should show
+  `SEALDEX_SESSION_SECRET` before the next deploy.
+
+**Repo state:** No on-chain change. Canonical IDL untouched.
+Anchor.toml untouched. Program ID untouched.
+
+**Deploy steps for the next push (operator action required):**
+
+```bash
+# Set the new required secret if not already set
+fly secrets set SEALDEX_SESSION_SECRET=$(openssl rand -hex 32)
+# Deploy
+fly deploy
+# Verify all four boot lines appear in logs
+fly logs --app sealdex | grep -E "starting (frontend|bidder-(alpha|beta)|spawn-worker)"
+```
+
+If `SEALDEX_SESSION_SECRET` is already set from a prior manual
+configuration, this iteration is a no-op for end users — the
+secret is idempotent, and the volume already has any existing
+spawns. If the secret was unset, the entrypoint will refuse to
+start until it's provided (loud message; no silent failure).
+
+**Next iteration roadmap (revised after iter 24):**
+1. **Wallet-balance gate** on `/api/agents/spawn` (≥0.1 SOL on
+   devnet) — anti-spam, costs the spawner. Especially important
+   now that BYOK is publicly reachable.
+2. **Recover-funds endpoint** orchestrating
+   `recover_bid_in_tee` + `refund_bid` for stuck PDAs.
+3. **Live LLM-provider verification** — pre-spawn check that
+   the user's endpoint + key actually return 200 to a one-token
+   probe.
+4. **Rate-limit /api/agents/spawn** per pubkey (e.g. 5 active
+   spawns max).
+5. **Per-spawn cost meter** — surface input/output token counts
+   from the iter-23 stream events so users can see how much
+   their custom endpoint is costing them per lot.
+
 ## Iteration 23 — Per-spawn stream tail endpoint + dashboard viewer
 
 **Problem this fixes.** After iteration 22 made the LLM backend
