@@ -15,6 +15,11 @@ import {
   statusBadgeStyle,
   type SpawnStatus,
 } from "@/lib/spawn-format";
+import {
+  eventTone,
+  summarizeEvent,
+  type StreamEvent,
+} from "@/lib/spawn-stream";
 
 interface AuthState {
   pubkey: string | null;
@@ -221,6 +226,16 @@ function EmptyState() {
   );
 }
 
+interface StreamFetchState {
+  events: StreamEvent[];
+  truncated: boolean;
+  sizeBytes: number;
+  streamFound: boolean;
+  error: string | null;
+}
+
+const STREAM_POLL_MS = 3000;
+
 function SpawnCard({
   spawn,
   now,
@@ -234,6 +249,44 @@ function SpawnCard({
 }) {
   const badge = statusBadgeStyle(spawn.status);
   const canStop = spawn.status === "running";
+  const [expanded, setExpanded] = useState(false);
+  const [stream, setStream] = useState<StreamFetchState | null>(null);
+
+  const refreshStream = useCallback(async () => {
+    try {
+      const r = await fetch(
+        `/api/agents/${encodeURIComponent(spawn.slug)}/stream?n=80`,
+        { cache: "no-store" }
+      );
+      if (!r.ok) {
+        setStream({
+          events: [],
+          truncated: false,
+          sizeBytes: 0,
+          streamFound: false,
+          error: `stream ${r.status}`,
+        });
+        return;
+      }
+      const data = (await r.json()) as Omit<StreamFetchState, "error">;
+      setStream({ ...data, error: null });
+    } catch (err) {
+      setStream({
+        events: [],
+        truncated: false,
+        sizeBytes: 0,
+        streamFound: false,
+        error: (err as Error).message ?? "fetch failed",
+      });
+    }
+  }, [spawn.slug]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    void refreshStream();
+    const id = setInterval(() => void refreshStream(), STREAM_POLL_MS);
+    return () => clearInterval(id);
+  }, [expanded, refreshStream]);
 
   return (
     <article
@@ -260,7 +313,14 @@ function SpawnCard({
             slug={spawn.slug} · id={shortId(spawn.spawnId, 6, 4)}
           </div>
         </div>
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          <button
+            data-testid="stream-toggle"
+            onClick={() => setExpanded((v) => !v)}
+            className="px-3 py-1.5 text-[12px] border border-rule rounded hover:bg-rule2"
+          >
+            {expanded ? "Hide stream" : "Show stream"}
+          </button>
           {canStop ? (
             <button
               data-testid="stop-button"
@@ -293,6 +353,127 @@ function SpawnCard({
           </>
         )}
       </dl>
+      {expanded && (
+        <StreamPanel
+          stream={stream}
+          now={now}
+          slug={spawn.slug}
+        />
+      )}
     </article>
+  );
+}
+
+function StreamPanel({
+  stream,
+  now,
+  slug,
+}: {
+  stream: StreamFetchState | null;
+  now: number;
+  slug: string;
+}) {
+  if (!stream) {
+    return (
+      <div
+        data-testid="stream-panel-loading"
+        className="mt-4 border-t border-rule pt-4 text-[12px] text-dim"
+      >
+        Loading stream…
+      </div>
+    );
+  }
+  if (stream.error) {
+    return (
+      <div
+        data-testid="stream-panel-error"
+        role="alert"
+        className="mt-4 border-t border-rule pt-4 text-[12px] text-red-700"
+      >
+        Stream error: {stream.error}
+      </div>
+    );
+  }
+  if (!stream.streamFound) {
+    return (
+      <div
+        data-testid="stream-panel-empty"
+        className="mt-4 border-t border-rule pt-4 text-[12px] text-dim"
+      >
+        No stream file yet — bidder hasn't started writing.
+      </div>
+    );
+  }
+  if (stream.events.length === 0) {
+    return (
+      <div
+        data-testid="stream-panel-empty-events"
+        className="mt-4 border-t border-rule pt-4 text-[12px] text-dim"
+      >
+        Stream file exists but no events yet.
+      </div>
+    );
+  }
+
+  // Newest first.
+  const ordered = [...stream.events].reverse();
+  const sizeKB = (stream.sizeBytes / 1024).toFixed(1);
+
+  return (
+    <div
+      data-testid="stream-panel"
+      data-slug={slug}
+      className="mt-4 border-t border-rule pt-4"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-dim ff-mono">
+          Recent activity
+        </div>
+        <div className="text-[11px] text-dim ff-mono">
+          {ordered.length} events · {sizeKB} KB
+          {stream.truncated && " · tail-only"}
+        </div>
+      </div>
+      <ol
+        data-testid="stream-events"
+        className="text-[12px] space-y-1.5 max-h-72 overflow-y-auto pr-1"
+      >
+        {ordered.map((e, i) => (
+          <StreamRow key={`${e.ts}-${i}`} event={e} now={now} />
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function StreamRow({ event, now }: { event: StreamEvent; now: number }) {
+  const tone = eventTone(event);
+  const toneClass =
+    tone === "good"
+      ? "text-emerald-700"
+      : tone === "warn"
+      ? "text-amber-700"
+      : tone === "error"
+      ? "text-red-700"
+      : "text-ink2";
+  const ageSec = Math.max(0, Math.round((now - event.ts) / 1000));
+  return (
+    <li
+      data-testid="stream-event"
+      data-kind={event.kind}
+      data-tone={tone}
+      className="grid grid-cols-[5rem,1fr] gap-3 ff-mono"
+    >
+      <span className="text-dim text-[11px] tabular-nums">
+        {ageSec < 60
+          ? `${ageSec}s ago`
+          : ageSec < 3600
+          ? `${Math.floor(ageSec / 60)}m ago`
+          : `${Math.floor(ageSec / 3600)}h ago`}
+      </span>
+      <span className={`break-words ${toneClass}`}>
+        {summarizeEvent(event)}
+      </span>
+    </li>
   );
 }

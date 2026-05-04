@@ -179,6 +179,178 @@ need to do next.
 - `docs/threat-model.md`
 - `docs/PRODUCTION-READINESS.md` (this file)
 
+## Iteration 23 — Per-spawn stream tail endpoint + dashboard viewer
+
+**Problem this fixes.** After iteration 22 made the LLM backend
+pluggable, users started spawning bidders with all sorts of
+providers (Anthropic, OpenRouter Llama, Groq, custom vLLM). But
+the dashboard only showed `running` / `stopped` / `errored` — no
+window into *what the agent was actually doing*. Was it
+evaluating lots? Was it skipping every lot because the want_list
+didn't match? Was the LLM declining to call `place_bid`? With a
+hardcoded Anthropic backend that's annoying; with arbitrary
+user-provided endpoints it's a "this is a black box, don't trust
+it" UX. This iteration surfaces the bidder's structured stream
+to the user.
+
+**What shipped.**
+
+- **`frontend/lib/spawn-stream.ts`** — pure, client-safe helpers:
+  - `parseStreamLines(text)`: parse JSONL → array of typed
+    `StreamEvent`. Tolerates blank lines + drops malformed lines
+    silently. Rejects entries that lack `ts` or `kind`.
+  - `tailLastN(events, n)`: most recent N, in order.
+  - `summarizeEvent(event)`: one-line human summary per known
+    event kind (`bidder_start`, `agent_response`, `agent_text`,
+    `agent_error`, `lot_skipped_pre_claude`, `bid_attempt`,
+    `bid_placed`, `ceiling_violation`, `guardrail_block`,
+    `feed_verification_failed`, `auction_pda_mismatch`,
+    `evaluate_error`). Unknown kinds fall through with the raw
+    `kind` so new bidder events show up rather than getting
+    swallowed.
+  - `eventTone(event)`: maps each kind to `"info" | "good" |
+    "warn" | "error"` for badge colour. `bid_placed` is "good";
+    ceiling violations + evaluate errors are "error";
+    guardrail blocks + feed-sig fails are "warn".
+
+- **`frontend/lib/spawn-stream-fs.ts`** — server-only fs helpers
+  (split from the pure file so webpack doesn't pull `node:fs`
+  into the client bundle):
+  - `findStreamFile(perSpawnStateDir)`: globs for
+    `bidder-*-stream.jsonl` and picks the most-recently-modified
+    match. Sidesteps the bidder-uses-its-own-slug() vs.
+    spawn-store-uses-uniqueSlugFor() mismatch — there's only
+    ever one bidder per per-spawn dir.
+  - `readStreamTail(path, {bytesCap, maxEvents})`: reads at most
+    a 256 KB tail window, drops the leading partial line (so
+    we don't mis-split mid-JSON), parses the rest as JSONL, and
+    returns the last N events. Pure-bytes window means a
+    100 MB stream file still serves a tail in O(window) time.
+
+- **`frontend/app/api/agents/[slug]/stream/route.ts`** — owner-
+  scoped GET. Auth gates identical to `/stop`:
+  - 401 with no session.
+  - 404 for both "no such slug" AND "not yours" (anti-enumeration:
+    an attacker can't tell "real but not yours" apart from
+    "doesn't exist").
+  - `?n=<int>` query, clamped to 1..500, default 100.
+  - Returns `{slug, events, truncated, sizeBytes, streamFound}`.
+    Empty `events: []` with `streamFound: false` when the bidder
+    hasn't written yet — dashboard renders "no events yet" rather
+    than 404.
+
+- **`frontend/app/spawn/me/page.tsx`** — dashboard expandable
+  rows. New "Show stream" button per row toggles a panel that:
+  - Polls `/api/agents/<slug>/stream` every 3s while expanded.
+  - Renders newest-first with `summarizeEvent` + tone-coloured
+    text (good=emerald, warn=amber, error=red, info=ink).
+  - Shows event count + KB size, plus a "tail-only" badge when
+    the file exceeded the bytes cap.
+  - Distinct empty states for "loading", "stream file not yet
+    written", "stream file exists but no events yet", "fetch
+    error".
+  - `data-testid` hooks (`stream-toggle`, `stream-panel`,
+    `stream-events`, `stream-event` with `data-kind` +
+    `data-tone`) so E2E + accessibility tooling can target rows.
+
+**Tests.** 27 new vitest cases in `lib/spawn-stream.test.ts` (18
+pure) + `lib/spawn-stream-fs.test.ts` (9 fs-backed):
+  - JSONL parser: blanks, malformed lines, missing fields,
+    empty input.
+  - `tailLastN`: last-N, all-when-shorter, n≤0, empty.
+  - `summarizeEvent`: per-kind formatting (bidder_start,
+    bid_placed amount + sig prefix, agent_response provider +
+    stop reason, lot_skipped category + grade, long agent_text
+    truncated, unknown kind fallthrough).
+  - `eventTone`: good/warn/error/info mappings.
+  - `findStreamFile`: missing dir, no match, normal find,
+    most-recently-modified wins.
+  - `readStreamTail`: small file unchanged, maxEvents cap, file
+    missing, bytesCap-truncated drops leading partial line and
+    returns well-formed events only.
+
+**End-to-end smoke** (`frontend/lib/smoke-iter23.ts` against the
+live local server):
+
+    auth ✓ (owner + intruder)
+    spawned: iter23-stream-...
+    initial stream: streamFound=true events=1
+    wrote 6 synth events
+    ✓ found bidder_start event
+    ✓ found bid_placed with amountUsdc=250
+    ✓ found ceiling_violation
+    ✓ found evaluate_error
+    ✓ events have ts numbers + kind strings
+    ✓ events surface in chronological order
+    ✓ sizeBytes > 0
+    ✓ no cookie → 401
+    ✓ intruder session → 404 (not 403, anti-enumeration)
+    ✓ n=large clamped to ≤500 events
+    stop ✓
+    ✓ iter23 stream-tail smoke PASSED
+
+The smoke spawns *two* wallets: the owner (who wrote the
+spawn) and an intruder (different session). The intruder gets
+404 — same as if the slug didn't exist — confirming the
+anti-enumeration property. The "n=large" assertion confirms the
+server-side clamp; without it a single client could DoS the
+route with `?n=1000000`.
+
+**Counts after iteration 23:** 56 mcp-server + 52 bidder + **163
+frontend** (was 136; +18 stream pure, +9 stream fs) = **271 unit
+tests**, plus 10 devnet integration + iter22 smoke + iter23
+smoke. All pass. `tsc --noEmit` clean. `next dev` recompiles
+clean (the early `node:fs` bundling error was the impetus for
+splitting `spawn-stream.ts` ↔ `spawn-stream-fs.ts`).
+
+**Why this is a big win, not cosmetic.** The BYOK product up to
+iter-22 was complete on paper but opaque in practice. A user
+spawned an agent with their fresh OpenRouter key, saw "running"
+for ten minutes, and had no way to tell: was their want_list too
+narrow, was their model declining to call the tool, was the
+endpoint URL slightly wrong, was the bidder ceiling-violating
+silently? Three of those four states *look identical from the
+spawn record*. Now the user can expand the row and see exactly
+what's happening in real time. That's the difference between
+"this is a tech demo" and "this is a tool I trust to spend my
+USDC."
+
+Concrete failure modes this exposes that previously required
+shell access:
+  - Wrong endpoint URL → `evaluate_error: openai-compatible
+    /chat/completions ECONNREFUSED ...` after the first registry
+    poll.
+  - Want_list mismatched the live catalog → repeated
+    `lot_skipped_pre_claude` events with category/grade visible.
+  - Model bidding above ceiling → `ceiling_violation` events
+    with the offending amount + reason visible (so the user
+    knows their model is hallucinating prices).
+  - Feed signature failed → `feed_verification_failed` events
+    with a reason — surfaces an MITM or a stale CDN.
+
+**Verification.**
+- `tsc --noEmit` clean for the frontend.
+- vitest 163/163 frontend, 52/52 bidder, 56/56 mcp-server.
+- E2E iter23 smoke passes 10/10 against live server + worker.
+- Manual: visit `/spawn/me` after spawning, click "Show stream",
+  observe live events ticking every 3s as the bidder runs.
+
+**Repo state:** No on-chain change. Canonical IDL untouched.
+
+**Next iteration roadmap (revised after iter 23):**
+1. **Wallet-balance gate** on `/api/agents/spawn` (≥0.1 SOL on
+   devnet) — anti-spam, costs the spawner.
+2. **Recover-funds endpoint** orchestrating
+   `recover_bid_in_tee` + `refund_bid` for the user's stuck
+   PDAs.
+3. **Wire the spawn worker into `entrypoint.sh`** + Fly deploy
+   story for BYOK in production.
+4. **Live LLM-provider verification** — optional pre-spawn check
+   that the user's endpoint + key actually return 200 to a
+   one-token probe.
+5. **Rate-limit /api/agents/spawn** per pubkey (e.g. 5 active
+   spawns max) — anti-resource-exhaustion.
+
 ## Iteration 22 — LLM endpoint pluggability (BYOK works with any host)
 
 **Problem this fixes.** Up through iteration 21 the bidder runtime
