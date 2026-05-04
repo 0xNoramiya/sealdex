@@ -179,6 +179,122 @@ need to do next.
 - `docs/threat-model.md`
 - `docs/PRODUCTION-READINESS.md` (this file)
 
+## Iteration 21 — `/spawn/me` dashboard (BYOK UI loop closes)
+
+**Problem this fixes.** Iteration 20 shipped the wizard for creating
+spawns, but managing them was still terminal-only. To stop or
+inspect a running agent users had to `curl /api/agents/me` + `curl
+/api/agents/{slug}/stop` themselves — which makes the BYOK product
+half-finished. This iteration adds the dashboard so the loop closes:
+`/spawn` to create, `/spawn/me` to manage.
+
+**What shipped.**
+
+- **`frontend/lib/spawn-format.ts`** — pure formatting helpers used
+  by the dashboard:
+  - `relativeTime(unixSeconds, nowMs?)` — compact strings ("3s
+    ago", "2m ago", "4h ago", "5d ago"). Handles future
+    timestamps ("30s from now") for clock skew, "just now" for
+    sub-1s deltas.
+  - `statusBadgeStyle(status)` — maps `running | stopped |
+    errored | …` to a stable visual style record (Tailwind
+    classes + pulse flag + plain-text label). Unknown statuses
+    fall through to a neutral badge.
+  - `shortId(id, head, tail)` — eg. `0123…cdef` for spawnIds in
+    table rows.
+
+- **`frontend/app/spawn/me/page.tsx`** — the dashboard:
+  - **Auth probe + auth gate** identical pattern to `/spawn`.
+    Signed-out users see "Connect your wallet" with the
+    `WalletConnectButton`; the dashboard never renders without
+    a session.
+  - **Polls `/api/agents/me` every 3s** while authed. Updates
+    timestamps via a separate `now` state so the relative-time
+    strings tick smoothly between fetches.
+  - **Empty state** with a CTA to `/spawn` when no agents exist
+    yet. Sorted by most-recently-updated when there are agents.
+  - **Per-row card**: name + status badge (pulsing for running),
+    slug + short spawnId, started/updated relative times, pid,
+    error message (when present). Stop button on running rows;
+    dash placeholder on terminal rows. `data-testid` /
+    `data-status` / `data-slug` attributes for E2E hooks.
+  - **Stop flow**: button POSTs to `/api/agents/[slug]/stop` and
+    refreshes the list immediately; the worker reconciles the
+    pid clear within its tick window.
+  - **Hot-reload in `yarn dev` picked up the route automatically**
+    on the running local server — no rebuild needed during
+    development.
+
+**Tests.** 13 new vitest cases in `lib/spawn-format.test.ts`:
+  - `relativeTime`: sub-minute / sub-hour / sub-day / multi-day
+    deltas, "just now", "from now" (clock skew)
+  - `statusBadgeStyle`: running pulses + accent, stopped muted,
+    errored red, unknown falls through
+  - `shortId`: shortens long, returns short unchanged, respects
+    custom head/tail
+
+**End-to-end smoke** (against the local `yarn dev` running on
+port 3000, two synthetic wallets):
+
+    /spawn/me renders ✓
+    auth ✓
+    spawned: dashboard-smoke-1, dashboard-smoke-2
+    /me reports 2 spawn(s)
+    schema matches dashboard expectations ✓
+    stop dashboard-smoke-1 ✓
+    /me reflects stopped on dashboard-smoke-1 ✓
+    other spawn dashboard-smoke-2 status=running
+    ✓ all dashboard smoke checks passed
+
+The schema check is the load-bearing assertion: the dashboard
+depends on `/api/agents/me` returning records with `spawnId`,
+`status`, `startedAt`, `updatedAt`, `pid` — if the API drifts the
+test catches it. The "stop one, other stays" assertion confirms
+spawns are independent: stopping one doesn't ripple to siblings.
+
+**Counts after iteration 21:** 56 mcp-server + 28 bidder + **119
+frontend** (was 106; +13 spawn-format) = **203 unit tests**, plus
+10 devnet integration tests. All pass.
+
+**Why this is a big win, not cosmetic.** The BYOK product is now
+end-to-end from a user's perspective:
+
+    visit /agents → click "Spawn an agent →"
+    visit /spawn → connect wallet → fill 5 steps → submit
+    redirect to /spawn/me → see your agent appear
+    watch status: running → errored (no real LLM key) or running indefinitely
+    click "Stop" → status flips to stopped
+    pid clears as the worker reconciles
+
+No terminal commands required. No JSON hand-crafting. Just a
+browser + a wallet + an LLM key. That's the difference between
+"the product exists" and "users can actually use it."
+
+**Verification.**
+- `tsc --noEmit` clean.
+- Dev server hot-reloaded the new route on existing local run.
+- vitest 119/119 frontend, 56/56 mcp-server, 28/28 bidder = 203/203.
+- E2E smoke against the running server confirms all
+  fetch-shape contracts the dashboard relies on.
+
+**Repo state:** No on-chain change. Canonical IDL untouched.
+
+**Next iteration roadmap:**
+1. **LLM endpoint pluggability** — bidder runtime currently
+   hardcodes `new Anthropic()`. Add OpenAI-compatible
+   `/v1/chat/completions` support so users can plug in any
+   compatible host.
+2. **Wallet-balance gate** on `/api/agents/spawn` (≥0.1 SOL on
+   devnet) — anti-spam, costs the spawner.
+3. **Recover-funds endpoint** orchestrating
+   `recover_bid_in_tee` + `refund_bid` for the user's stuck
+   PDAs.
+4. **Per-spawn stream endpoint + tail viewer** — surface the
+   bidder's JSONL stream in the dashboard so users can debug
+   "why didn't my agent bid?".
+5. **Wire the spawn worker into `entrypoint.sh`** + write up
+   the Fly deploy story for BYOK.
+
 ## Iteration 20 — Frontend `/spawn` wizard (BYOK turns user-visible)
 
 **Problem this fixes.** Iterations 17-19 shipped the entire BYOK
