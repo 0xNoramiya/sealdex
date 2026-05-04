@@ -47,8 +47,12 @@ import {
   updateSpawn,
 } from "../lib/spawn-store";
 
+type LLMProvider = "anthropic" | "openai-compatible";
+
 interface DecryptedCreds {
   llmApiKey: string;
+  llmProvider?: LLMProvider;
+  llmModel?: string | null;
   llmEndpoint: string | null;
   keypairBytes: number[];
 }
@@ -105,6 +109,9 @@ function startSpawn(spawnId: string) {
     materializeRuntimeKeypair(spawnId, creds.keypairBytes);
     const env = buildChildEnv({
       llmApiKey: creds.llmApiKey,
+      llmProvider: creds.llmProvider ?? "anthropic",
+      llmModel: creds.llmModel ?? null,
+      llmEndpoint: creds.llmEndpoint ?? null,
       perSpawnStateDir: perSpawnStateDir(spawnId),
       solanaRpcUrl: process.env.SOLANA_RPC_URL,
       sealdexRegistryUrl: process.env.SEALDEX_REGISTRY_URL,

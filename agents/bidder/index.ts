@@ -1,9 +1,19 @@
-// Bidder agent — discovers open auctions, evaluates each lot via Claude with
-// tool-use, and places sealed bids when Claude decides the lot matches the
+// Bidder agent — discovers open auctions, evaluates each lot via an LLM with
+// tool-use, and places sealed bids when the model decides the lot matches the
 // principal's want-list.
 //
 // Deployment:
-//   ANTHROPIC_API_KEY      Required. Operator's Claude API key.
+//   BIDDER_LLM_PROVIDER    "anthropic" (default) or "openai-compatible".
+//                          When unset, falls back to anthropic if
+//                          ANTHROPIC_API_KEY is present (back-compat).
+//   BIDDER_LLM_API_KEY     Provider API key. Falls back to ANTHROPIC_API_KEY
+//                          when provider is anthropic.
+//   BIDDER_LLM_MODEL       Provider model id. Required for openai-compatible;
+//                          defaults to claude-sonnet-4-6 for anthropic.
+//   BIDDER_LLM_ENDPOINT    Required for openai-compatible. Base URL of the
+//                          /v1/chat/completions API (with or without the
+//                          path suffix — normalised on the way in).
+//   ANTHROPIC_API_KEY      Legacy alias accepted when provider=anthropic.
 //   SOLANA_RPC_URL         Base layer RPC. Helius recommended for production:
 //                          https://devnet.helius-rpc.com/?api-key=<key>
 //   SEALDEX_REGISTRY_URL   HTTP endpoint that returns the auction registry as
@@ -15,7 +25,6 @@
 //
 // Usage: tsx index.ts <config-path>
 //   e.g. tsx index.ts configs/alpha.json
-import Anthropic from "@anthropic-ai/sdk";
 import { Keypair } from "@solana/web3.js";
 import {
   appendFileSync,
@@ -45,6 +54,12 @@ import {
   BIDDER_SYSTEM_PROMPT,
   PLACE_BID_TOOL,
 } from "./prompts.js";
+import {
+  makeLLMClient,
+  resolveLLMRuntime,
+  type LLMClient,
+  type LLMToolUseBlock,
+} from "./llm.js";
 import {
   buildLotContext as pureBuildLotContext,
   checkBidCeiling,
@@ -162,7 +177,8 @@ const buildLotContext = (
   );
 
 async function evaluateLot(
-  client: Anthropic,
+  client: LLMClient,
+  model: string,
   cfg: BidderConfig,
   state: BidState,
   entry: RegistryEntry,
@@ -177,35 +193,31 @@ async function evaluateLot(
 } | null> {
   const userContext = buildLotContext(cfg, state, entry, clusterUnixTime);
 
-  // Render order is tools → system → messages. A cache breakpoint on the
-  // last system block caches both tools AND system together. The user
-  // message (per-lot context) sits AFTER the breakpoint and is uncached,
-  // which is what we want — only the lot context varies per call.
-  const response = await client.messages.create({
-    model: BIDDER_MODEL,
-    max_tokens: 1024,
-    system: [
-      {
-        type: "text",
-        text: BIDDER_SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
+  // For Anthropic: render order is tools → system → messages and a cache
+  // breakpoint on the last system block caches both tools AND system
+  // together. The per-lot context sits AFTER the breakpoint and is
+  // uncached, which is what we want — only the lot context varies.
+  // For OpenAI-compatible: no caching, but the wire shape is the same.
+  const response = await client.evaluate({
+    systemPrompt: BIDDER_SYSTEM_PROMPT,
+    userMessage: userContext,
     tools: [PLACE_BID_TOOL],
-    messages: [{ role: "user", content: userContext }],
+    model,
+    maxTokens: 1024,
   });
 
-  const cacheRead = response.usage.cache_read_input_tokens ?? 0;
-  const cacheCreation = response.usage.cache_creation_input_tokens ?? 0;
+  const cacheRead = response.usage.cacheReadTokens;
+  const cacheCreation = response.usage.cacheCreationTokens;
   streamLog(streamPath, {
-    kind: "claude_response",
+    kind: "agent_response",
+    provider: client.providerName,
     auctionId: entry.auctionId,
-    stop_reason: response.stop_reason,
+    stop_reason: response.stopReason,
     usage: response.usage,
   });
 
-  // Extract any text reasoning from the response (when Claude skips, it
-  // emits text only; when Claude bids, it emits a tool_use block).
+  // Extract any text reasoning from the response (when the model skips
+  // it emits text only; when it bids, it emits a tool_use block).
   for (const block of response.content) {
     if (block.type === "text" && block.text.trim().length > 0) {
       streamLog(streamPath, {
@@ -217,7 +229,7 @@ async function evaluateLot(
   }
 
   const toolBlock = response.content.find(
-    (b): b is Anthropic.ToolUseBlock =>
+    (b): b is LLMToolUseBlock =>
       b.type === "tool_use" && b.name === "place_bid"
   );
   if (!toolBlock) {
@@ -302,11 +314,16 @@ async function main() {
   const registryPath = resolve(STATE_DIR, "auction-registry.json");
   const state = loadOrInitState(statePath);
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    baseLog.fatal("ANTHROPIC_API_KEY env var is required");
+  let llmCfg;
+  try {
+    llmCfg = resolveLLMRuntime(process.env, { anthropicModel: BIDDER_MODEL });
+  } catch (err) {
+    baseLog.fatal("LLM runtime config invalid", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     process.exit(1);
   }
-  const client = new Anthropic();
+  const client = makeLLMClient(llmCfg);
 
   const myPubkey = bidderPubkey(cfg);
   const trustedPublisher = cfg.trusted_publisher_pubkey
@@ -326,6 +343,9 @@ async function main() {
     state: statePath,
     registry: REGISTRY_URL ?? `file://${registryPath}`,
     trustedPublisher: trustedPublisher?.toBase58() ?? null,
+    llmProvider: llmCfg.provider,
+    llmModel: llmCfg.model,
+    llmEndpoint: llmCfg.endpoint ?? null,
   });
   if (!trustedPublisher) {
     log.warn(
@@ -425,6 +445,7 @@ async function main() {
       try {
         const decision = await evaluateLot(
           client,
+          llmCfg.model,
           cfg,
           state,
           entry,

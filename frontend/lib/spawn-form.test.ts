@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  LLM_PRESETS,
   WIZARD_STEPS,
+  applyLLMPreset,
   initialWizardState,
   toSpawnPayload,
   validateBudget,
@@ -195,6 +197,76 @@ describe("validateCreds", () => {
     s.creds.keypairBytes = freshKeypairBytes();
     expect(validateCreds(s)).toEqual([]);
   });
+
+  it("requires endpoint when provider is openai-compatible", () => {
+    const s = initialWizardState();
+    s.creds.llmApiKey = "sk-long-enough-fake-key-1234";
+    s.creds.keypairBytes = freshKeypairBytes();
+    s.creds.llmProvider = "openai-compatible";
+    s.creds.llmEndpoint = "";
+    s.creds.llmModel = "gpt-4o-mini";
+    expect(validateCreds(s).map((e) => e.field)).toContain("creds.llmEndpoint");
+  });
+
+  it("requires model id when provider is openai-compatible", () => {
+    const s = initialWizardState();
+    s.creds.llmApiKey = "sk-long-enough-fake-key-1234";
+    s.creds.keypairBytes = freshKeypairBytes();
+    s.creds.llmProvider = "openai-compatible";
+    s.creds.llmEndpoint = "https://api.openai.com/v1";
+    s.creds.llmModel = "";
+    expect(validateCreds(s).map((e) => e.field)).toContain("creds.llmModel");
+  });
+
+  it("rejects non-http endpoint URLs", () => {
+    const s = initialWizardState();
+    s.creds.llmApiKey = "sk-long-enough-fake-key-1234";
+    s.creds.keypairBytes = freshKeypairBytes();
+    s.creds.llmProvider = "openai-compatible";
+    s.creds.llmEndpoint = "javascript:alert(1)";
+    s.creds.llmModel = "x";
+    expect(validateCreds(s).map((e) => e.field)).toContain("creds.llmEndpoint");
+  });
+
+  it("passes when openai-compatible provider has full triple", () => {
+    const s = initialWizardState();
+    s.creds.llmApiKey = "sk-long-enough-fake-key-1234";
+    s.creds.keypairBytes = freshKeypairBytes();
+    s.creds.llmProvider = "openai-compatible";
+    s.creds.llmEndpoint = "https://openrouter.ai/api/v1";
+    s.creds.llmModel = "anthropic/claude-3.5-sonnet";
+    expect(validateCreds(s)).toEqual([]);
+  });
+});
+
+describe("applyLLMPreset", () => {
+  it("fills endpoint + model defaults from a known preset", () => {
+    const s = initialWizardState();
+    s.creds.llmApiKey = "preserved";
+    const next = applyLLMPreset(s.creds, "openrouter");
+    expect(next.llmProvider).toBe("openai-compatible");
+    expect(next.llmEndpoint).toBe("https://openrouter.ai/api/v1");
+    expect(next.llmModel).toBe("anthropic/claude-3.5-sonnet");
+    // Preserves typed-in fields the preset doesn't touch.
+    expect(next.llmApiKey).toBe("preserved");
+  });
+
+  it('on "custom" preset, leaves user-typed endpoint and model alone', () => {
+    const s = initialWizardState();
+    s.creds.llmEndpoint = "https://my-vllm.example/v1";
+    s.creds.llmModel = "my-model";
+    const next = applyLLMPreset(s.creds, "custom");
+    expect(next.llmProvider).toBe("openai-compatible");
+    expect(next.llmEndpoint).toBe("https://my-vllm.example/v1");
+    expect(next.llmModel).toBe("my-model");
+  });
+
+  it("falls back to first preset when id unknown", () => {
+    const s = initialWizardState();
+    const next = applyLLMPreset(s.creds, "not-a-preset-id");
+    expect(next.llmPresetId).toBe(LLM_PRESETS[0]!.id);
+    expect(next.llmProvider).toBe(LLM_PRESETS[0]!.provider);
+  });
 });
 
 describe("validateStep dispatch", () => {
@@ -235,6 +307,23 @@ describe("toSpawnPayload", () => {
     expect(payload.config).not.toHaveProperty("trusted_publisher_pubkey");
     expect(payload.secrets.llmApiKey).toBe("sk-fake-key-very-long-yes-very-long");
     expect(payload.secrets.keypairBytes).toEqual(freshKeypairBytes());
+    expect(payload.secrets.llmProvider).toBe("anthropic");
+    expect(payload.secrets).not.toHaveProperty("llmEndpoint");
+  });
+
+  it("includes endpoint + model when openai-compatible", () => {
+    const s = initialWizardState();
+    s.persona.name = "Beta";
+    s.budget.total_budget_usdc = 5000;
+    s.creds.llmApiKey = "sk-fake-key-very-long-yes-very-long";
+    s.creds.keypairBytes = freshKeypairBytes();
+    s.creds.llmProvider = "openai-compatible";
+    s.creds.llmEndpoint = "  https://openrouter.ai/api/v1  ";
+    s.creds.llmModel = "  anthropic/claude-3.5-sonnet  ";
+    const payload = toSpawnPayload(s);
+    expect(payload.secrets.llmProvider).toBe("openai-compatible");
+    expect(payload.secrets.llmEndpoint).toBe("https://openrouter.ai/api/v1");
+    expect(payload.secrets.llmModel).toBe("anthropic/claude-3.5-sonnet");
   });
 
   it("includes trusted_publisher_pubkey when set", () => {

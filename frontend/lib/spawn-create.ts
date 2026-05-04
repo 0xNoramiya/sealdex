@@ -36,10 +36,18 @@ export interface SpawnConfigInput {
   trusted_publisher_pubkey?: string;
 }
 
+export type LLMProvider = "anthropic" | "openai-compatible";
+
 export interface SpawnSecretsInput {
   /** LLM API key (Anthropic, OpenAI-compatible, etc.). */
   llmApiKey: string;
-  /** Optional override URL for the LLM endpoint. */
+  /** Provider family. Defaults to anthropic on the server when omitted. */
+  llmProvider?: LLMProvider;
+  /** Model id. Required for openai-compatible; optional for anthropic
+   *  (defaults to claude-sonnet-4-6 in the bidder runtime). */
+  llmModel?: string;
+  /** Required for openai-compatible: base URL of the /v1/chat/completions
+   *  API. Stripped of any trailing /chat/completions suffix in the bidder. */
   llmEndpoint?: string;
   /** 64-byte ed25519 secret key (Solana keypair). Encoded as a number[]
    *  matching the on-disk JSON format Solana keygen produces. */
@@ -139,11 +147,46 @@ export function validateSpawnPayload(p: unknown): SpawnCreateError | null {
   if (!secrets.llmApiKey || typeof secrets.llmApiKey !== "string") {
     return { code: "invalid_secrets", message: "secrets.llmApiKey required" };
   }
+  const provider = secrets.llmProvider ?? "anthropic";
+  if (provider !== "anthropic" && provider !== "openai-compatible") {
+    return {
+      code: "invalid_secrets",
+      message: 'secrets.llmProvider must be "anthropic" or "openai-compatible"',
+    };
+  }
   if (
     secrets.llmEndpoint !== undefined &&
     typeof secrets.llmEndpoint !== "string"
   ) {
     return { code: "invalid_secrets", message: "secrets.llmEndpoint must be string" };
+  }
+  if (
+    secrets.llmModel !== undefined &&
+    typeof secrets.llmModel !== "string"
+  ) {
+    return { code: "invalid_secrets", message: "secrets.llmModel must be string" };
+  }
+  if (provider === "openai-compatible") {
+    if (!secrets.llmEndpoint || secrets.llmEndpoint.trim() === "") {
+      return {
+        code: "invalid_secrets",
+        message: "openai-compatible requires secrets.llmEndpoint",
+      };
+    }
+    if (!secrets.llmModel || secrets.llmModel.trim() === "") {
+      return {
+        code: "invalid_secrets",
+        message: "openai-compatible requires secrets.llmModel",
+      };
+    }
+    // Block javascript:/data: URIs even by accident — only http(s).
+    const ep = secrets.llmEndpoint.trim().toLowerCase();
+    if (!ep.startsWith("https://") && !ep.startsWith("http://")) {
+      return {
+        code: "invalid_secrets",
+        message: "secrets.llmEndpoint must be an http(s) URL",
+      };
+    }
   }
   if (
     !Array.isArray(secrets.keypairBytes) ||
@@ -189,12 +232,14 @@ export function createSpawn(
   });
 
   // Encrypt secrets at rest. The encrypted blob includes everything
-  // the worker needs to start the bidder process: LLM key, optional
-  // endpoint URL, raw keypair bytes.
+  // the worker needs to start the bidder process: LLM provider/model/
+  // endpoint/key, raw keypair bytes.
   const enc: EncryptedRecord = encryptCreds(
     {
       llmApiKey: payload.secrets.llmApiKey,
-      llmEndpoint: payload.secrets.llmEndpoint ?? null,
+      llmProvider: payload.secrets.llmProvider ?? "anthropic",
+      llmModel: payload.secrets.llmModel?.trim() || null,
+      llmEndpoint: payload.secrets.llmEndpoint?.trim() || null,
       keypairBytes: payload.secrets.keypairBytes,
     },
     masterSecret,

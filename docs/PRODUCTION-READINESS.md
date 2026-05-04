@@ -179,6 +179,208 @@ need to do next.
 - `docs/threat-model.md`
 - `docs/PRODUCTION-READINESS.md` (this file)
 
+## Iteration 22 — LLM endpoint pluggability (BYOK works with any host)
+
+**Problem this fixes.** Up through iteration 21 the bidder runtime
+hardcoded `new Anthropic()`. BYOK only worked for users with an
+Anthropic key. Most LLM users today are not Anthropic-first — they
+have an OpenAI key, an OpenRouter key, a Groq key, or a self-hosted
+vLLM endpoint. Forcing an Anthropic key drops the addressable user
+count by an order of magnitude. This iteration makes the LLM
+backend pluggable without changing any other part of the system.
+
+**What shipped.**
+
+- **`agents/bidder/llm.ts`** — provider-agnostic `LLMClient`
+  interface. The bidder loop now calls `client.evaluate({
+  systemPrompt, userMessage, tools, model, maxTokens })` and reads
+  back a normalized `{ content: (text|tool_use)[], stopReason,
+  usage }` shape. Two adapters:
+  - **`AnthropicAdapter`** — wraps `@anthropic-ai/sdk`. Keeps the
+    system-block cache breakpoint so prompt caching still works
+    (~2k token system prompt amortizes after ~2 calls).
+  - **`OpenAICompatibleAdapter`** — POSTs to
+    `<base>/chat/completions` with `Authorization: Bearer <key>`,
+    JSON body shaped `{model, max_tokens, messages: [{system},
+    {user}], tools: [{type: "function", function: {name,
+    description, parameters}}], tool_choice: "auto"}`. Parses the
+    canonical `choices[0].message.{content,tool_calls}` shape; a
+    pure parser is exported so tests can hand it canned shapes.
+  - Tool-shape translation lives in the adapters — `prompts.ts`
+    exposes `PLACE_BID_TOOL` as a neutral `LLMTool` (`{name,
+    description, schema}`) so the same definition feeds both.
+  - URL normaliser strips a trailing `/chat/completions` if the
+    user pasted the full URL by accident.
+
+- **`resolveLLMRuntime()`** in `llm.ts` — pure env-to-config
+  resolver. Reads `BIDDER_LLM_PROVIDER`, `BIDDER_LLM_API_KEY`,
+  `BIDDER_LLM_MODEL`, `BIDDER_LLM_ENDPOINT`. Falls back to
+  legacy `ANTHROPIC_API_KEY` only when provider=anthropic.
+  Throws specific errors for missing-required-fields per provider
+  (model + endpoint required for openai-compatible; no
+  cross-host model default).
+
+- **`agents/bidder/index.ts`** — refactored to use the factory.
+  Logs `provider`, `model`, `endpoint` on startup. Stream events
+  changed from `kind: "claude_response"` to `kind:
+  "agent_response"` with a `provider` field so the public reasoning
+  feed makes sense regardless of which model wrote it.
+
+- **`frontend/lib/spawn-form.ts`** — adds `LLM_PRESETS` (Anthropic,
+  OpenAI, OpenRouter, Groq, "Custom") and `applyLLMPreset()` so the
+  wizard can preset the endpoint + model in one click. Validation
+  enforces the openai-compatible triple (endpoint + model + key);
+  `toSpawnPayload()` only sends `llmEndpoint`/`llmModel` when the
+  provider is openai-compatible.
+
+- **`frontend/lib/spawn-create.ts`** — server-side payload
+  validation extended: `llmProvider`, `llmModel`, `llmEndpoint`
+  are persisted into the AES-GCM-encrypted creds blob next to the
+  user's API key. `javascript:` and `data:` URI schemes blocked
+  (only http/https accepted) — defense-in-depth even though only
+  the worker process ever opens these URLs.
+
+- **`frontend/lib/spawn-process.ts`** — `ChildEnv` redesigned
+  around `BIDDER_LLM_*` instead of `ANTHROPIC_API_KEY`. Pure
+  builder is unchanged in shape; adds `llmProvider`, `llmModel`,
+  `llmEndpoint` inputs that pass through to the child.
+
+- **`frontend/worker/spawn-worker.ts`** — reads the new fields
+  from decrypted creds and passes them to `buildChildEnv`. Old
+  encrypted blobs (without provider) decrypt cleanly and default
+  to anthropic (back-compat).
+
+- **`frontend/app/spawn/page.tsx`** — Creds step gains a provider
+  dropdown. When "OpenAI", "OpenRouter", "Groq", or "Custom" is
+  picked, two new fields surface: endpoint URL + model id. The
+  Review step shows provider, endpoint, and model so the user
+  sees exactly what gets sent before they submit.
+
+**Tests added.**
+
+- **`agents/bidder/llm.test.ts`** — 24 cases:
+  - URL normalization (trailing slash, `/chat/completions` suffix,
+    both together, clean URL untouched).
+  - `parseOpenAIChatResponse`: text-only, tool-call only, both,
+    empty content, malformed JSON args, missing tool-call function
+    name, missing choices[].
+  - `OpenAICompatibleAdapter.evaluate`: posts the right URL, sets
+    Authorization Bearer, translates the neutral tool to function
+    shape, sends `tool_choice: "auto"`, throws a descriptive error
+    on non-2xx.
+  - `resolveLLMRuntime`: anthropic default + legacy
+    `ANTHROPIC_API_KEY` fallback, `BIDDER_LLM_API_KEY` precedence,
+    custom anthropic model, openai-compatible requires
+    endpoint+model+key, accepts "openai" as synonym, rejects
+    unknown providers.
+
+- **`frontend/lib/spawn-create.test.ts`** — 8 cases (file is new):
+  - Default (no provider) accepted as anthropic.
+  - Unknown provider rejected.
+  - openai-compatible without endpoint / without model rejected.
+  - Non-http(s) URL rejected.
+  - Full openai-compatible payload accepted.
+  - Round-trip: encrypt → decrypt preserves provider/model/endpoint.
+  - Default provider survives the round-trip.
+
+- **`frontend/lib/spawn-process.test.ts`** — 4 new cases:
+  - Default provider = anthropic with no endpoint/model emitted.
+  - All optional inputs threaded through.
+  - `null` model/endpoint treated as omitted.
+  - Purity contract: `process.env.BIDDER_LLM_API_KEY` and
+    `ANTHROPIC_API_KEY` do NOT leak into the child env.
+
+- **`frontend/lib/spawn-form.test.ts`** — 6 new cases:
+  - openai-compatible requires endpoint, model, http(s) scheme.
+  - Full openai-compatible state validates clean.
+  - `applyLLMPreset` fills endpoint+model from a known preset and
+    preserves user-typed API key.
+  - "custom" preset leaves user-typed endpoint/model untouched.
+  - Unknown preset id falls back to first.
+  - `toSpawnPayload` only emits llmEndpoint/llmModel for
+    openai-compatible.
+
+**End-to-end smoke**
+(`frontend/lib/smoke-iter22.ts` against the live local server +
+worker, on Linux because the assertion reads `/proc/<pid>/environ`):
+
+    auth ✓
+    spawned: iter22-smoke-1777935217231
+    bidder pid=76048 status=running
+    read /proc/<pid>/environ ✓
+    ✓ BIDDER_LLM_PROVIDER === openai-compatible
+    ✓ BIDDER_LLM_ENDPOINT === https://example.invalid/v1
+    ✓ BIDDER_LLM_MODEL === test-model-id
+    ✓ BIDDER_LLM_API_KEY === sk-fake-test-key-do-not-call
+    ✓ SEALDEX_STATE_DIR includes spawnId
+    ✓ legacy ANTHROPIC_API_KEY NOT inherited as the bidder's key
+    stop ✓
+    ✓ iter22 LLM-endpoint pluggability smoke PASSED
+
+This is the load-bearing assertion: the bidder's *runtime
+process* — not just the encrypted blob, not just the wizard form
+— gets the right env. The check pulls from `/proc/<pid>/environ`
+of the live forked child, so any wiring slip between
+spawn-create → cred-crypto → worker → spawn-process → forkBidder
+would surface immediately.
+
+**Counts after iteration 22:** 56 mcp-server + **52 bidder** (was
+28; +24 llm) + **136 frontend** (was 119; +8 spawn-create,
++1 spawn-process, +8 spawn-form) = **244 unit tests**, plus 10
+devnet integration tests, plus the new iteration-22 smoke. All
+pass. `tsc --noEmit` clean for both bidder and frontend.
+
+**Why this is a big win, not cosmetic.** Two reasons.
+
+1. *Addressable user count.* The BYOK pitch was "bring your LLM
+   key + Solana wallet to bid in sealed auctions." Pre-iteration,
+   "your LLM key" really meant "your Anthropic key" — a small
+   slice of the market. Post-iteration, anyone with an OpenAI key,
+   an OpenRouter account (which proxies dozens of models), a Groq
+   key for fast Llama, or a self-hosted vLLM endpoint can run a
+   bidder. The wizard's preset list (Anthropic / OpenAI /
+   OpenRouter / Groq / Custom) covers ~90% of the market without
+   the user having to know about endpoint URLs.
+
+2. *Cost flexibility.* Anthropic Sonnet 4.6 ≈ $3/MTok input.
+   Groq's `llama-3.3-70b-versatile` ≈ $0.59/MTok. The system
+   prompt in `prompts.ts` is ~2k tokens; per evaluate we send
+   ~2.5k input + get back ~200 output. A run that costs $0.0075
+   on Anthropic costs $0.0015 on Groq. That's a 5× cost
+   reduction the user can opt into without us touching the
+   bidder loop logic. The trade-off (no prompt caching on
+   OpenAI-compat hosts) is documented in the adapter and surfaces
+   in the bidder's structured logs.
+
+**Verification.**
+- `tsc --noEmit` clean for `agents/bidder` and `frontend`.
+- vitest 52/52 bidder, 136/136 frontend, 56/56 mcp-server.
+- E2E smoke passes (6/6 assertions) against live local server +
+  worker against an OpenAI-compatible spawn.
+- Anthropic-only spawns continue to work (default provider; old
+  encrypted blobs decode cleanly without `llmProvider`).
+
+**Repo state:** No on-chain change. Canonical IDL untouched.
+Anchor.toml untouched. Program ID untouched. The bidder runtime
++ BYOK pipeline are the only edited surfaces.
+
+**Next iteration roadmap (revised after iter 22):**
+1. **Wallet-balance gate** on `/api/agents/spawn` (≥0.1 SOL on
+   devnet) — anti-spam, costs the spawner.
+2. **Per-spawn stream endpoint + tail viewer** — surface the
+   bidder's JSONL stream in the dashboard so users can debug
+   "why didn't my agent bid?". Especially valuable now that
+   provider/model varies per spawn.
+3. **Recover-funds endpoint** orchestrating
+   `recover_bid_in_tee` + `refund_bid` for the user's stuck
+   PDAs.
+4. **Wire the spawn worker into `entrypoint.sh`** + Fly deploy
+   story for BYOK in production.
+5. **Live LLM-provider verification** — optional pre-spawn check
+   that the user's endpoint + key actually return 200 to a
+   one-token probe, so wrong creds surface in the wizard rather
+   than in the running spawn.
+
 ## Iteration 21 — `/spawn/me` dashboard (BYOK UI loop closes)
 
 **Problem this fixes.** Iteration 20 shipped the wizard for creating

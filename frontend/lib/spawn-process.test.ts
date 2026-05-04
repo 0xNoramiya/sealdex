@@ -19,15 +19,18 @@ async function load() {
 }
 
 describe("buildChildEnv", () => {
-  it("includes only the defined inputs (no leaking undefined keys)", async () => {
+  it("defaults provider to anthropic and only emits defined inputs", async () => {
     const m = await load();
     const env = m.buildChildEnv({
       llmApiKey: "sk-test",
       perSpawnStateDir: "/tmp/x",
     });
-    expect(env.ANTHROPIC_API_KEY).toBe("sk-test");
+    expect(env.BIDDER_LLM_PROVIDER).toBe("anthropic");
+    expect(env.BIDDER_LLM_API_KEY).toBe("sk-test");
     expect(env.SEALDEX_STATE_DIR).toBe("/tmp/x");
     // Optional fields not set → not present (so process.env merge is clean).
+    expect(env.BIDDER_LLM_MODEL).toBeUndefined();
+    expect(env.BIDDER_LLM_ENDPOINT).toBeUndefined();
     expect(env.SOLANA_RPC_URL).toBeUndefined();
     expect(env.SEALDEX_REGISTRY_URL).toBeUndefined();
     expect(env.SEALDEX_IDL_PATH).toBeUndefined();
@@ -39,6 +42,9 @@ describe("buildChildEnv", () => {
     const m = await load();
     const env = m.buildChildEnv({
       llmApiKey: "sk",
+      llmProvider: "openai-compatible",
+      llmModel: "gpt-4o-mini",
+      llmEndpoint: "https://openrouter.ai/api/v1",
       perSpawnStateDir: "/p",
       solanaRpcUrl: "https://devnet.example",
       sealdexRegistryUrl: "https://sealdex.example/api/auctions",
@@ -47,7 +53,10 @@ describe("buildChildEnv", () => {
       sentryDsn: "https://k@s/1",
     });
     expect(env).toEqual({
-      ANTHROPIC_API_KEY: "sk",
+      BIDDER_LLM_PROVIDER: "openai-compatible",
+      BIDDER_LLM_API_KEY: "sk",
+      BIDDER_LLM_MODEL: "gpt-4o-mini",
+      BIDDER_LLM_ENDPOINT: "https://openrouter.ai/api/v1",
       SEALDEX_STATE_DIR: "/p",
       SOLANA_RPC_URL: "https://devnet.example",
       SEALDEX_REGISTRY_URL: "https://sealdex.example/api/auctions",
@@ -57,14 +66,29 @@ describe("buildChildEnv", () => {
     });
   });
 
+  it("treats null model/endpoint as omitted (worker passes nulls when unset)", async () => {
+    const m = await load();
+    const env = m.buildChildEnv({
+      llmApiKey: "sk",
+      llmProvider: "anthropic",
+      llmModel: null,
+      llmEndpoint: null,
+      perSpawnStateDir: "/p",
+    });
+    expect(env.BIDDER_LLM_MODEL).toBeUndefined();
+    expect(env.BIDDER_LLM_ENDPOINT).toBeUndefined();
+  });
+
   it("does NOT read process.env (purity contract)", async () => {
-    process.env.ANTHROPIC_API_KEY = "should-not-leak";
+    process.env.BIDDER_LLM_API_KEY = "should-not-leak";
+    process.env.ANTHROPIC_API_KEY = "should-not-leak-2";
     const m = await load();
     const env = m.buildChildEnv({
       llmApiKey: "explicit-key",
       perSpawnStateDir: "/p",
     });
-    expect(env.ANTHROPIC_API_KEY).toBe("explicit-key");
+    expect(env.BIDDER_LLM_API_KEY).toBe("explicit-key");
+    delete process.env.BIDDER_LLM_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
   });
 });

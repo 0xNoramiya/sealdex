@@ -7,6 +7,57 @@
 
 export type RiskAppetite = "conservative" | "balanced" | "aggressive";
 
+export type LLMProvider = "anthropic" | "openai-compatible";
+
+/** Minimal preset list exposed by the wizard. The user can always
+ *  flip "openai-compatible" + paste a custom endpoint/model — the
+ *  presets just save typing for the common cases. */
+export const LLM_PRESETS: Array<{
+  id: string;
+  label: string;
+  provider: LLMProvider;
+  /** Default endpoint pre-filled when the preset is picked. */
+  endpoint: string;
+  /** Default model id (best-known small/cheap default per host). */
+  defaultModel: string;
+}> = [
+  {
+    id: "anthropic",
+    label: "Anthropic (claude.ai)",
+    provider: "anthropic",
+    endpoint: "",
+    defaultModel: "claude-sonnet-4-6",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    provider: "openai-compatible",
+    endpoint: "https://api.openai.com/v1",
+    defaultModel: "gpt-4o-mini",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    provider: "openai-compatible",
+    endpoint: "https://openrouter.ai/api/v1",
+    defaultModel: "anthropic/claude-3.5-sonnet",
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    provider: "openai-compatible",
+    endpoint: "https://api.groq.com/openai/v1",
+    defaultModel: "llama-3.3-70b-versatile",
+  },
+  {
+    id: "custom",
+    label: "Custom (OpenAI-compatible)",
+    provider: "openai-compatible",
+    endpoint: "",
+    defaultModel: "",
+  },
+];
+
 export interface WantListEntry {
   category: string;
   min_grade: number;
@@ -33,6 +84,14 @@ export interface WizardState {
   };
   creds: {
     llmApiKey: string;
+    /** Provider family — drives which fields are required + sent. */
+    llmProvider: LLMProvider;
+    /** Preset id from LLM_PRESETS, or "custom" when user is typing freely. */
+    llmPresetId: string;
+    /** Endpoint URL (only sent when provider === openai-compatible). */
+    llmEndpoint: string;
+    /** Model id (only sent when provider === openai-compatible). */
+    llmModel: string;
     /** "generate" | "upload" — drives UX, not the server payload. */
     keypairMode: "generate" | "upload";
     /** Generated/uploaded keypair as a 64-byte number array. */
@@ -52,11 +111,42 @@ export function initialWizardState(): WizardState {
     budget: { total_budget_usdc: 5000, trusted_publisher_pubkey: "" },
     creds: {
       llmApiKey: "",
+      llmProvider: "anthropic",
+      llmPresetId: "anthropic",
+      llmEndpoint: "",
+      llmModel: "",
       keypairMode: "generate",
       keypairBytes: null,
       keypairPubkey: "",
       keypairUploadError: null,
     },
+  };
+}
+
+/** Apply a preset by id. Pure: returns a new creds object with the
+ *  preset's provider/endpoint/model defaults filled in. Preserves any
+ *  user-typed API key + custom endpoint when switching to "custom". */
+export function applyLLMPreset(
+  creds: WizardState["creds"],
+  presetId: string
+): WizardState["creds"] {
+  const preset = LLM_PRESETS.find((p) => p.id === presetId) ?? LLM_PRESETS[0]!;
+  // For "custom" we keep whatever the user has already typed; for
+  // named presets we overwrite endpoint/model with the preset's defaults
+  // so toggling between presets is predictable.
+  if (preset.id === "custom") {
+    return {
+      ...creds,
+      llmPresetId: preset.id,
+      llmProvider: preset.provider,
+    };
+  }
+  return {
+    ...creds,
+    llmPresetId: preset.id,
+    llmProvider: preset.provider,
+    llmEndpoint: preset.endpoint,
+    llmModel: preset.defaultModel,
   };
 }
 
@@ -188,6 +278,35 @@ export function validateCreds(state: WizardState): ValidationError[] {
       message: "API key looks too short — sure you pasted the whole thing?",
     });
   }
+  if (
+    state.creds.llmProvider !== "anthropic" &&
+    state.creds.llmProvider !== "openai-compatible"
+  ) {
+    errors.push({
+      field: "creds.llmProvider",
+      message: "Pick a provider",
+    });
+  }
+  if (state.creds.llmProvider === "openai-compatible") {
+    const ep = state.creds.llmEndpoint.trim();
+    if (!ep) {
+      errors.push({
+        field: "creds.llmEndpoint",
+        message: "OpenAI-compatible needs an endpoint URL (e.g. https://api.openai.com/v1)",
+      });
+    } else if (!/^https?:\/\//i.test(ep)) {
+      errors.push({
+        field: "creds.llmEndpoint",
+        message: "Endpoint must start with http:// or https://",
+      });
+    }
+    if (!state.creds.llmModel.trim()) {
+      errors.push({
+        field: "creds.llmModel",
+        message: "OpenAI-compatible needs a model id (e.g. gpt-4o-mini)",
+      });
+    }
+  }
   if (!Array.isArray(state.creds.keypairBytes) || state.creds.keypairBytes.length !== 64) {
     errors.push({
       field: "creds.keypairBytes",
@@ -229,11 +348,18 @@ export function toSpawnPayload(state: WizardState) {
   };
   const tp = state.budget.trusted_publisher_pubkey?.trim();
   if (tp) cfg.trusted_publisher_pubkey = tp;
-  return {
-    config: cfg,
-    secrets: {
-      llmApiKey: state.creds.llmApiKey,
-      keypairBytes: state.creds.keypairBytes ?? [],
-    },
+  const secrets: any = {
+    llmApiKey: state.creds.llmApiKey,
+    llmProvider: state.creds.llmProvider,
+    keypairBytes: state.creds.keypairBytes ?? [],
   };
+  if (state.creds.llmProvider === "openai-compatible") {
+    secrets.llmEndpoint = state.creds.llmEndpoint.trim();
+    secrets.llmModel = state.creds.llmModel.trim();
+  } else if (state.creds.llmModel.trim()) {
+    // Anthropic with an explicit model override is allowed too (e.g.
+    // a user wants to test with claude-haiku-4-5).
+    secrets.llmModel = state.creds.llmModel.trim();
+  }
+  return { config: cfg, secrets };
 }

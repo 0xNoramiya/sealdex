@@ -12,7 +12,9 @@ import { Footer, TopBar } from "@/components/Chrome";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { Keypair } from "@solana/web3.js";
 import {
+  LLM_PRESETS,
   WIZARD_STEPS,
+  applyLLMPreset,
   initialWizardState,
   toSpawnPayload,
   validateAll,
@@ -33,7 +35,7 @@ const STEP_BLURBS: Record<WizardStep, string> = {
   persona: "Name your agent and pick how aggressive its bidding gets.",
   want_list: "Categories + minimum grades + ceilings the agent will hunt.",
   budget: "Total spend across all open bids. Optional trusted publisher key.",
-  creds: "Your LLM API key + a Solana keypair. Both encrypted at rest.",
+  creds: "Pick an LLM provider, paste a key, and pair a Solana wallet. Both secrets encrypted at rest.",
   review: "Final check before the worker forks your bidder.",
 };
 
@@ -538,11 +540,80 @@ function CredsStep({ state, setState }: StepProps) {
     }
   };
 
+  const isOpenAICompatible = state.creds.llmProvider === "openai-compatible";
   return (
     <div className="grid gap-5">
       <Field
+        label="LLM provider"
+        help="Anthropic uses the official SDK + prompt caching. Any OpenAI-compatible /v1/chat/completions host works (OpenRouter, Groq, Together, vLLM, …)."
+      >
+        <select
+          data-testid="field-provider"
+          value={state.creds.llmPresetId}
+          onChange={(e) =>
+            setState((s) => ({
+              ...s,
+              creds: applyLLMPreset(s.creds, e.target.value),
+            }))
+          }
+          className="w-full text-[14px] px-3 py-2 border border-rule rounded bg-paper ff-mono"
+        >
+          {LLM_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {isOpenAICompatible && (
+        <>
+          <Field
+            label="Endpoint URL"
+            help="Base URL of the /v1/chat/completions API. The bidder appends /chat/completions automatically."
+          >
+            <input
+              data-testid="field-endpoint"
+              type="url"
+              autoComplete="off"
+              value={state.creds.llmEndpoint}
+              onChange={(e) =>
+                setState((s) => ({
+                  ...s,
+                  creds: { ...s.creds, llmEndpoint: e.target.value },
+                }))
+              }
+              placeholder="https://openrouter.ai/api/v1"
+              className="w-full text-[14px] px-3 py-2 border border-rule rounded bg-paper ff-mono"
+            />
+          </Field>
+          <Field
+            label="Model id"
+            help="Provider-specific model id. e.g. gpt-4o-mini, anthropic/claude-3.5-sonnet, llama-3.3-70b-versatile."
+          >
+            <input
+              data-testid="field-model"
+              type="text"
+              autoComplete="off"
+              value={state.creds.llmModel}
+              onChange={(e) =>
+                setState((s) => ({
+                  ...s,
+                  creds: { ...s.creds, llmModel: e.target.value },
+                }))
+              }
+              placeholder="gpt-4o-mini"
+              className="w-full text-[14px] px-3 py-2 border border-rule rounded bg-paper ff-mono"
+            />
+          </Field>
+        </>
+      )}
+      <Field
         label="LLM API key"
-        help="Anthropic key (sk-ant-…) for the v1 bidder runtime. OpenAI-compatible endpoints land in a later iteration."
+        help={
+          isOpenAICompatible
+            ? "Bearer token sent in the Authorization header to your endpoint."
+            : "Anthropic key (sk-ant-…). Used to call claude.ai with the official SDK + prompt caching."
+        }
       >
         <input
           data-testid="field-apikey"
@@ -555,7 +626,7 @@ function CredsStep({ state, setState }: StepProps) {
               creds: { ...s.creds, llmApiKey: e.target.value },
             }))
           }
-          placeholder="sk-ant-…"
+          placeholder={isOpenAICompatible ? "sk-…" : "sk-ant-…"}
           className="w-full text-[14px] px-3 py-2 border border-rule rounded bg-paper ff-mono"
         />
       </Field>
@@ -656,6 +727,26 @@ function ReviewStep({ state }: { state: WizardState }) {
         ) : (
           <span className="text-red-700">missing</span>
         )
+      )}
+      {display(
+        "LLM provider",
+        <span className="ff-mono">
+          {state.creds.llmProvider}
+          {state.creds.llmProvider === "openai-compatible" &&
+            state.creds.llmEndpoint && (
+              <>
+                {" "}
+                <span className="text-dim">@</span>{" "}
+                <span className="break-all">{state.creds.llmEndpoint}</span>
+              </>
+            )}
+          {state.creds.llmModel && (
+            <>
+              {" "}
+              <span className="text-dim">·</span> {state.creds.llmModel}
+            </>
+          )}
+        </span>
       )}
       {display(
         "LLM key",

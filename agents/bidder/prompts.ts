@@ -4,7 +4,7 @@
 // system prompt below is intentionally thorough to clear that bar and
 // pay back the cache write within ~2 calls).
 
-import type Anthropic from "@anthropic-ai/sdk";
+import type { LLMTool } from "./llm.js";
 
 export const BIDDER_MODEL = "claude-sonnet-4-6";
 
@@ -72,11 +72,11 @@ lot: { category: "Modern Premium", grade: 9 }
 - The seller's reserve and the auctioneer's identity are unknown to you. Bid on intrinsic value.
 - Your reasoning is public; your bid amount is not. Phrase reasoning so it's defensible if leaked.`;
 
-export const PLACE_BID_TOOL: Anthropic.Tool = {
+export const PLACE_BID_TOOL: LLMTool = {
   name: "place_bid",
   description:
     "Place a sealed bid on the auction lot you are currently evaluating. The bid amount is sealed inside Intel TDX hardware until the seller settles; only the reasoning is public. Call this AT MOST ONCE per turn, only if the lot matches a want-list entry and the bid fits within remaining_budget AND the matching entry's max_value_usdc.",
-  input_schema: {
+  schema: {
     type: "object",
     properties: {
       amount_usdc: {

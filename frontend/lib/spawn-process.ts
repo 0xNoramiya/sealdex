@@ -25,10 +25,18 @@ import {
   spawnRuntimeKeypairPath,
 } from "./spawn-store";
 
+export type LLMProvider = "anthropic" | "openai-compatible";
+
 export interface ChildEnv {
-  /** Set as ANTHROPIC_API_KEY for the bidder child. v2 will pluggable
-   *  this to support OpenAI-compatible endpoints. */
-  ANTHROPIC_API_KEY: string;
+  /** Provider family the bidder runtime should use. */
+  BIDDER_LLM_PROVIDER: LLMProvider;
+  /** Provider API key. Replaces the legacy ANTHROPIC_API_KEY env. */
+  BIDDER_LLM_API_KEY: string;
+  /** Provider model id. Optional for anthropic (defaulted in bidder),
+   *  required for openai-compatible. */
+  BIDDER_LLM_MODEL?: string;
+  /** Required for openai-compatible: base URL of /v1/chat/completions. */
+  BIDDER_LLM_ENDPOINT?: string;
   /** Per-spawn state dir — the bidder writes its bidder-state JSON +
    *  JSONL stream here. Isolation prevents one spawn from clobbering
    *  another's state. */
@@ -47,6 +55,9 @@ export interface ChildEnv {
 
 export interface BuildChildEnvInput {
   llmApiKey: string;
+  llmProvider?: LLMProvider;
+  llmModel?: string | null;
+  llmEndpoint?: string | null;
   perSpawnStateDir: string;
   solanaRpcUrl?: string;
   sealdexRegistryUrl?: string;
@@ -61,10 +72,14 @@ export interface BuildChildEnvInput {
  * the child env is auditable from one place.
  */
 export function buildChildEnv(input: BuildChildEnvInput): ChildEnv {
+  const provider: LLMProvider = input.llmProvider ?? "anthropic";
   const env: ChildEnv = {
-    ANTHROPIC_API_KEY: input.llmApiKey,
+    BIDDER_LLM_PROVIDER: provider,
+    BIDDER_LLM_API_KEY: input.llmApiKey,
     SEALDEX_STATE_DIR: input.perSpawnStateDir,
   };
+  if (input.llmModel) env.BIDDER_LLM_MODEL = input.llmModel;
+  if (input.llmEndpoint) env.BIDDER_LLM_ENDPOINT = input.llmEndpoint;
   if (input.solanaRpcUrl) env.SOLANA_RPC_URL = input.solanaRpcUrl;
   if (input.sealdexRegistryUrl) env.SEALDEX_REGISTRY_URL = input.sealdexRegistryUrl;
   if (input.sealdexIdlPath) env.SEALDEX_IDL_PATH = input.sealdexIdlPath;
