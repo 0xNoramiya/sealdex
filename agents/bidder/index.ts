@@ -22,8 +22,20 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  writeFileSync,
 } from "node:fs";
+import { atomicWriteJsonSync } from "../../mcp-server/src/atomic-write.js";
+import {
+  verifyAuctionPdaDerives,
+  verifyRegistryEntry,
+  type SignedRegistryEntry,
+} from "../../mcp-server/src/registry-sign.js";
+import { getLogger, type Logger } from "../../mcp-server/src/logger.js";
+import {
+  captureException,
+  isEnabled as sentryEnabled,
+} from "../../mcp-server/src/sentry.js";
+import { PROGRAM_ID } from "../../mcp-server/src/client.js";
+import { PublicKey } from "@solana/web3.js";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +45,16 @@ import {
   BIDDER_SYSTEM_PROMPT,
   PLACE_BID_TOOL,
 } from "./prompts.js";
+import {
+  buildLotContext as pureBuildLotContext,
+  checkBidCeiling,
+  lotMatchesWantList,
+  remainingBudget as pureRemainingBudget,
+  slug as pureSlug,
+  type BidderConfig as PureBidderConfig,
+  type BidState as PureBidState,
+  type RegistryEntry as PureRegistryEntry,
+} from "./lib.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
@@ -51,6 +73,15 @@ interface BidderConfig {
   }>;
   total_budget_usdc: number;
   risk_appetite: "conservative" | "balanced" | "aggressive";
+  /**
+   * Optional. Base58 pubkey of the auctioneer that publishes the registry
+   * feed. When set, every fetched entry must carry a `feed_signature`
+   * verifiable against this pubkey or the entry is skipped — this defends
+   * against tampered feeds (compromised CDN, MITM on a non-TLS link, or a
+   * rogue mirror). When unset, signatures are still verified opportunistically
+   * but missing-or-invalid signatures only log a warning.
+   */
+  trusted_publisher_pubkey?: string;
 }
 
 interface RegistryEntry {
@@ -72,9 +103,7 @@ interface BidState {
   >;
 }
 
-function slug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-}
+const slug = pureSlug;
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -97,7 +126,11 @@ function loadOrInitState(statePath: string): BidState {
 }
 
 function saveState(statePath: string, state: BidState) {
-  writeFileSync(statePath, JSON.stringify(state, null, 2));
+  // Atomic rename so a crash mid-write can't leave a torn JSON file —
+  // the bidder loop reads this on every iteration to compute remaining
+  // budget, and a corrupt read would make us either skip lots or
+  // double-spend.
+  atomicWriteJsonSync(statePath, state);
 }
 
 function streamLog(streamPath: string, record: Record<string, unknown>) {
@@ -112,42 +145,21 @@ function bidderPubkey(cfg: BidderConfig): string {
   return Keypair.fromSecretKey(Uint8Array.from(raw)).publicKey.toBase58();
 }
 
-function remainingBudget(cfg: BidderConfig, state: BidState): number {
-  let spent = 0;
-  for (const v of Object.values(state.bidsPlaced)) spent += v.amountUsdc;
-  return cfg.total_budget_usdc - spent;
-}
+const remainingBudget = (cfg: BidderConfig, state: BidState) =>
+  pureRemainingBudget(cfg as PureBidderConfig, state as PureBidState);
 
-function buildLotContext(
+const buildLotContext = (
   cfg: BidderConfig,
   state: BidState,
   entry: RegistryEntry,
   clusterUnixTime: number
-): string {
-  const md = entry.lot.lot_metadata;
-  const timeLeftSeconds = Math.max(0, entry.endTimeUnix - clusterUnixTime);
-  return [
-    `# CURRENT LOT EVALUATION`,
-    ``,
-    `auction_id: ${entry.auctionId}`,
-    `time_left_seconds: ${timeLeftSeconds}`,
-    `risk_appetite: ${cfg.risk_appetite}`,
-    `remaining_budget: ${remainingBudget(cfg, state)}`,
-    ``,
-    `want_list: ${JSON.stringify(cfg.want_list)}`,
-    ``,
-    `lot:`,
-    `  category: ${md.category}`,
-    `  grade: ${md.grade}`,
-    `  year: ${md.year ?? "n/a"}`,
-    `  serial: ${md.serial ?? "n/a"}`,
-    `  estimate_low_usdc: ${md.estimate_low_usdc ?? "n/a"}`,
-    `  estimate_high_usdc: ${md.estimate_high_usdc ?? "n/a"}`,
-    `  cert_number: ${md.cert_number ?? "n/a"}`,
-    ``,
-    `Decide: bid via place_bid, or skip with a short text reply.`,
-  ].join("\n");
-}
+) =>
+  pureBuildLotContext(
+    cfg as PureBidderConfig,
+    state as PureBidState,
+    entry as PureRegistryEntry,
+    clusterUnixTime
+  );
 
 async function evaluateLot(
   client: Anthropic,
@@ -276,9 +288,10 @@ async function fetchRegistry(localPath: string): Promise<RegistryEntry[]> {
 }
 
 async function main() {
+  const baseLog = getLogger("bidder");
   const configPath = process.argv[2];
   if (!configPath) {
-    console.error("Usage: tsx index.ts <config-path>");
+    baseLog.fatal("missing config path argument", { usage: "tsx index.ts <config-path>" });
     process.exit(1);
   }
   const cfg = loadConfig(resolve(configPath));
@@ -290,19 +303,35 @@ async function main() {
   const state = loadOrInitState(statePath);
 
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("ANTHROPIC_API_KEY env var is required");
+    baseLog.fatal("ANTHROPIC_API_KEY env var is required");
     process.exit(1);
   }
   const client = new Anthropic();
 
   const myPubkey = bidderPubkey(cfg);
-  console.log(`🤖 ${cfg.name} (${myPubkey.slice(0, 8)}…) starting bidder loop`);
-  console.log(`   keypair:  ${cfg.keypair_path}`);
-  console.log(`   stream:   ${streamPath}`);
-  console.log(`   state:    ${statePath}`);
-  console.log(
-    `   registry: ${REGISTRY_URL ?? `file://${registryPath}`}`,
-  );
+  const trustedPublisher = cfg.trusted_publisher_pubkey
+    ? new PublicKey(cfg.trusted_publisher_pubkey)
+    : null;
+  // Per-process child logger keyed on the bidder's name + pubkey so
+  // every line in this run is grep-friendly. Sentry shares the same
+  // env (SENTRY_DSN) and is a no-op when unset.
+  const log: Logger = baseLog.child({
+    bidder: cfg.name,
+    pubkey: myPubkey,
+    sentry: sentryEnabled(),
+  });
+  log.info("bidder loop starting", {
+    keypair: cfg.keypair_path,
+    stream: streamPath,
+    state: statePath,
+    registry: REGISTRY_URL ?? `file://${registryPath}`,
+    trustedPublisher: trustedPublisher?.toBase58() ?? null,
+  });
+  if (!trustedPublisher) {
+    log.warn(
+      "trusted_publisher_pubkey not set — feed signatures verified opportunistically only"
+    );
+  }
   streamLog(streamPath, {
     kind: "bidder_start",
     name: cfg.name,
@@ -328,6 +357,70 @@ async function main() {
     for (const entry of registry) {
       if (state.bidsPlaced[entry.auctionId]) continue;
       if (entry.endTimeUnix <= clusterUnixTime - 60) continue; // expired well past
+
+      // When trustedPublisher is set, every entry must verify. The helper
+      // short-circuits to ok=true when trustedPublisher is null so opt-out
+      // bidders aren't gated.
+      if (trustedPublisher) {
+        const verification = verifyRegistryEntry(
+          entry as unknown as Partial<SignedRegistryEntry>,
+          trustedPublisher
+        );
+        if (!verification.ok) {
+          streamLog(streamPath, {
+            kind: "feed_verification_failed",
+            auctionId: entry.auctionId,
+            reason: verification.reason,
+          });
+          log.warn("skipping entry: feed signature failed", {
+            auctionId: entry.auctionId,
+            reason: verification.reason,
+          });
+          continue;
+        }
+      }
+
+      // Independent of feed signing: verify the entry's claimed
+      // auctionPda is the deterministic PDA derivation of its auctionId.
+      // Catches a malicious-but-signed entry that lies about which PDA
+      // an auctionId resolves to — without this check the bidder would
+      // mis-derive its own bid PDA and place a bid that settle later
+      // orphans.
+      if (!verifyAuctionPdaDerives(entry, PROGRAM_ID)) {
+        streamLog(streamPath, {
+          kind: "auction_pda_mismatch",
+          auctionId: entry.auctionId,
+          claimedPda: entry.auctionPda,
+        });
+        log.warn("skipping entry: auctionPda derivation mismatch", {
+          auctionId: entry.auctionId,
+          claimedPda: entry.auctionPda,
+        });
+        continue;
+      }
+
+      // Pre-Claude lot filter: skip the API call entirely when no
+      // want-list entry can match. Saves tokens (and money) at scale —
+      // a 100-entry registry with a 2-line want_list is mostly noise to
+      // Claude, and the cache only helps the system-prompt prefix, not
+      // the per-lot context. We deliberately do NOT memoize the skip in
+      // state.bidsPlaced — operators may update their want_list mid-run,
+      // and re-checking is cheap (~microseconds per entry).
+      const md = entry.lot.lot_metadata as { category?: string; grade?: number };
+      if (
+        !lotMatchesWantList(cfg.want_list, {
+          category: md.category,
+          grade: md.grade,
+        })
+      ) {
+        streamLog(streamPath, {
+          kind: "lot_skipped_pre_claude",
+          auctionId: entry.auctionId,
+          category: md.category,
+          grade: md.grade,
+        });
+        continue;
+      }
 
       try {
         const decision = await evaluateLot(
@@ -361,6 +454,49 @@ async function main() {
             auctionId: entry.auctionId,
             reason: `bid ${amountUsdc} > remaining ${remaining}`,
           });
+          log.warn("guardrail: amount exceeds remaining budget", {
+            auctionId: entry.auctionId,
+            amountUsdc,
+            remaining,
+          });
+          continue;
+        }
+
+        // Last line of defense before signing: validate Claude's amount
+        // against the principal's want_list ceiling AND the
+        // risk-appetite multiplier. A compromised Claude or a
+        // prompt-injection in lot_metadata could push a bid far above
+        // the principal's stated max — this hard-rejects (rather than
+        // clamps) so the operator sees the violation in the stream and
+        // Sentry rather than silently winning at the wrong price.
+        const md = entry.lot.lot_metadata as { category?: string; grade?: number };
+        const ceiling = checkBidCeiling(cfg, md, amountUsdc);
+        if (!ceiling.ok) {
+          streamLog(streamPath, {
+            kind: "ceiling_violation",
+            auctionId: entry.auctionId,
+            amountUsdc,
+            reason: ceiling.reason,
+            match: ceiling.match,
+            hardCeiling: ceiling.hardCeiling,
+          });
+          log.error("ceiling violation: refusing to place bid", {
+            auctionId: entry.auctionId,
+            amountUsdc,
+            reason: ceiling.reason,
+            hardCeiling: ceiling.hardCeiling,
+            maxValueUsdc: ceiling.match?.max_value_usdc,
+          });
+          captureException(
+            new Error(`bidder ceiling violation: ${ceiling.reason}`),
+            {
+              op: "bidder.ceiling_check",
+              bidder: cfg.name,
+              auctionId: entry.auctionId,
+              amountUsdc,
+              reason: ceiling.reason,
+            }
+          );
           continue;
         }
 
@@ -393,9 +529,12 @@ async function main() {
           signature: result.signature,
           bidPda: result.bidPda,
         });
-        console.log(
-          `🟢 ${cfg.name} bid $${amountUsdc} on auction ${entry.auctionId} (sig ${result.signature.slice(0, 8)}…)`
-        );
+        log.info("bid placed", {
+          auctionId: entry.auctionId,
+          amountUsdc,
+          signature: result.signature,
+          bidPda: result.bidPda,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         streamLog(streamPath, {
@@ -403,9 +542,15 @@ async function main() {
           auctionId: entry.auctionId,
           error: msg,
         });
-        console.error(
-          `❌ ${cfg.name} failed evaluating auction ${entry.auctionId}: ${msg}`
-        );
+        log.error("evaluate / placeBid threw", {
+          auctionId: entry.auctionId,
+          err,
+        });
+        captureException(err, {
+          op: "bidder.evaluate",
+          bidder: cfg.name,
+          auctionId: entry.auctionId,
+        });
       }
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
@@ -413,6 +558,11 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("bidder fatal:", e);
+  // Top-level catch: log + report + exit. Process manager (Fly,
+  // systemd, etc.) restarts us, but we want the original failure
+  // surfaced before the supervisor sees only the exit code.
+  const log = getLogger("bidder");
+  log.fatal("bidder fatal", { err: e });
+  captureException(e, { op: "bidder.main" });
   process.exit(1);
 });

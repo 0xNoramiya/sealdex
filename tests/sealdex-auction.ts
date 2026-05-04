@@ -51,6 +51,10 @@ describe("sealdex-auction", () => {
 
   const auctionId = new BN(Date.now());
   const auctionDurationSec = 12;
+  // claim_grace_seconds floor is 60s; the happy-path test claims promptly
+  // so the value here only matters for slash-window tests.
+  const claimGraceSeconds = 60;
+  const bidDepositLamports = new BN(10_000_000); // 0.01 SOL — must equal the program's MIN.
   let endTime: BN;
   let clockSkewSec = 0; // localNow - clusterNow
 
@@ -141,7 +145,18 @@ describe("sealdex-auction", () => {
     endTime = new BN(clusterNow + auctionDurationSec);
 
     const createIx = await program.methods
-      .createAuction(auctionId, lotMetadataUri, paymentMint, endTime)
+      .createAuction(
+        auctionId,
+        lotMetadataUri,
+        paymentMint,
+        endTime,
+        bidDepositLamports,
+        new BN(claimGraceSeconds),
+        { firstPrice: {} },
+        [],
+        new BN(0),
+        new BN(0)
+      )
       .accounts({
         // @ts-ignore
         auction: auctionPda,
@@ -206,7 +221,7 @@ describe("sealdex-auction", () => {
     for (let i = 0; i < allBidders.length; i++) {
       const b = allBidders[i];
       const placeIx = await program.methods
-        .placeBid(auctionId, bidAmounts[i])
+        .placeBid(auctionId, bidAmounts[i], bidDepositLamports)
         .accounts({
           // @ts-ignore
           bid: bidPdas[i],
@@ -310,8 +325,10 @@ describe("sealdex-auction", () => {
         permissionAuction,
         payer: seller.publicKey,
       })
+      // settle_auction now mutates loser bid amounts and undelegates all
+      // bid PDAs along with the auction, so they must be writable.
       .remainingAccounts(
-        bidPdas.map((p) => ({ pubkey: p, isSigner: false, isWritable: false }))
+        bidPdas.map((p) => ({ pubkey: p, isSigner: false, isWritable: true }))
       )
       .transaction();
     settleTx.feePayer = seller.publicKey;
@@ -362,6 +379,7 @@ describe("sealdex-auction", () => {
       .accounts({
         // @ts-ignore
         auction: auctionPda,
+        bid: bidPdas[1], // bidder B is the winner
         winner: bidderB.publicKey,
       })
       .transaction();
@@ -381,5 +399,67 @@ describe("sealdex-auction", () => {
       l.includes("Program data:")
     );
     console.log("LotClaimed event log entries:", logs?.length ?? 0);
+  });
+
+  it("Losers can refund their bid deposits after settle", async () => {
+    // Bidders A and C lost — both should be able to close their bid PDAs
+    // and reclaim the deposit. The handler rejects the winner.
+    for (const i of [0, 2]) {
+      const bidder = allBidders[i];
+      const balBefore = await provider.connection.getBalance(bidder.publicKey);
+      const refundTx = await program.methods
+        .refundBid()
+        .accounts({
+          // @ts-ignore
+          auction: auctionPda,
+          bid: bidPdas[i],
+          bidder: bidder.publicKey,
+        })
+        .transaction();
+      refundTx.feePayer = bidder.publicKey;
+      const sig = await sendAndConfirmTransaction(
+        provider.connection,
+        refundTx,
+        [bidder],
+        { skipPreflight: true, commitment: "confirmed" }
+      );
+      const balAfter = await provider.connection.getBalance(bidder.publicKey);
+      console.log(
+        `🪙  Bidder ${"ABC"[i]} refund tx ${sig.slice(0, 8)}…  +${balAfter - balBefore} lamports`
+      );
+      if (balAfter <= balBefore) {
+        throw new Error(`Refund did not return lamports to bidder ${"ABC"[i]}`);
+      }
+    }
+
+    // Winner cannot refund (must claim_lot or wait for slash window).
+    let winnerRefundFailed = false;
+    try {
+      const tx = await program.methods
+        .refundBid()
+        .accounts({
+          // @ts-ignore
+          auction: auctionPda,
+          bid: bidPdas[1],
+          bidder: bidderB.publicKey,
+        })
+        .transaction();
+      tx.feePayer = bidderB.publicKey;
+      await sendAndConfirmTransaction(
+        provider.connection,
+        tx,
+        [bidderB],
+        { skipPreflight: true, commitment: "confirmed" }
+      );
+    } catch {
+      winnerRefundFailed = true;
+    }
+    if (!winnerRefundFailed) {
+      // Winner's bid PDA was already closed by claim_lot, so this could
+      // also fail with AccountNotInitialized. Either failure mode is fine
+      // — the invariant we care about is that the winner does NOT get an
+      // extra refund.
+      console.warn("⚠ Winner's refund_bid did not throw — investigate.");
+    }
   });
 });

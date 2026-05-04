@@ -44,7 +44,13 @@ export function bidPda(
   )[0];
 }
 
-export type AuctionStatus = "Open" | "Settled" | "Claimed" | "Unknown";
+export type AuctionStatus =
+  | "Open"
+  | "Settled"
+  | "Claimed"
+  | "Slashed"
+  | "Unknown";
+export type AuctionKind = "FirstPrice" | "SecondPrice" | "Unknown";
 export interface AuctionView {
   auctionId: string;
   auctionPda: string;
@@ -55,14 +61,27 @@ export interface AuctionView {
   status: AuctionStatus;
   winner: string | null;
   winningBidNative: string | null; // u64 native units (e.g. micro-USDC)
+  bidDepositLamports: string;
+  claimGraceSeconds: number;
+  kind: AuctionKind;
+}
+
+function decodeKind(k: any): AuctionKind {
+  if (k?.FirstPrice !== undefined || k?.firstPrice !== undefined)
+    return "FirstPrice";
+  if (k?.SecondPrice !== undefined || k?.secondPrice !== undefined)
+    return "SecondPrice";
+  return "Unknown";
 }
 
 function decodeStatus(s: any): AuctionStatus {
   // BorshAccountsCoder emits variants as PascalCase keys (Open / Settled /
-  // Claimed). Some Anchor codepaths also emit lowercase, so accept both.
+  // Claimed / Slashed). Some Anchor codepaths also emit lowercase, so
+  // accept both.
   if (s?.Open !== undefined || s?.open !== undefined) return "Open";
   if (s?.Settled !== undefined || s?.settled !== undefined) return "Settled";
   if (s?.Claimed !== undefined || s?.claimed !== undefined) return "Claimed";
+  if (s?.Slashed !== undefined || s?.slashed !== undefined) return "Slashed";
   return "Unknown";
 }
 
@@ -88,6 +107,8 @@ export async function readAuction(
   const paymentMintField = a.payment_mint ?? a.paymentMint;
   const endTimeField = a.end_time ?? a.endTime;
   const winningBidField = a.winning_bid ?? a.winningBid;
+  const depositField = a.bid_deposit_lamports ?? a.bidDepositLamports;
+  const graceField = a.claim_grace_seconds ?? a.claimGraceSeconds;
   return {
     auctionId: (auctionIdField as BN).toString(),
     auctionPda: pda.toBase58(),
@@ -98,6 +119,9 @@ export async function readAuction(
     status: decodeStatus(a.status),
     winner: a.winner ? (a.winner as PublicKey).toBase58() : null,
     winningBidNative: winningBidField ? (winningBidField as BN).toString() : null,
+    bidDepositLamports: depositField ? (depositField as BN).toString() : "0",
+    claimGraceSeconds: graceField ? (graceField as BN).toNumber() : 0,
+    kind: decodeKind(a.kind),
   };
 }
 

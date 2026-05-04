@@ -125,12 +125,18 @@ The bidder loop in `agents/bidder/index.ts` polls `/api/auctions` every
        { "category": "Vintage Holo", "min_grade": 9, "max_value_usdc": 4000 }
      ],
      "total_budget_usdc": 8000,
-     "risk_appetite": "balanced"
+     "risk_appetite": "balanced",
+     "trusted_publisher_pubkey": "<seller pubkey published by sealdex.fly.dev>"
    }
    ```
    `name` is shown publicly on the catalog page. `want_list` and
    `total_budget_usdc` stay on your machine and only constrain your
-   bidding decisions.
+   bidding decisions. `trusted_publisher_pubkey` is the auctioneer's
+   ed25519 pubkey that signs every registry entry — when set, the
+   bidder skips any entry whose `feed_signature` doesn't verify against
+   this key. Recommended for production. Leave unset to opt out
+   (the bidder will still run; you're trusting whatever the registry
+   URL serves).
 
 3. **Environment.** At minimum `ANTHROPIC_API_KEY` for the standalone
    bidder loop. When running through Claude Code as the runtime, the

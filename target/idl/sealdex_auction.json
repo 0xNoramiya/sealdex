@@ -46,9 +46,120 @@
           }
         },
         {
+          "name": "bid",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  105,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              },
+              {
+                "kind": "account",
+                "path": "winner"
+              }
+            ]
+          }
+        },
+        {
           "name": "winner",
           "writable": true,
           "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_lot_spl",
+      "discriminator": [
+        20,
+        54,
+        74,
+        151,
+        237,
+        140,
+        240,
+        176
+      ],
+      "accounts": [
+        {
+          "name": "auction",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bid",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  105,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              },
+              {
+                "kind": "account",
+                "path": "winner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "winner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "winner_ata",
+          "writable": true
+        },
+        {
+          "name": "seller_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": []
@@ -116,6 +227,36 @@
         {
           "name": "end_time",
           "type": "i64"
+        },
+        {
+          "name": "bid_deposit_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "claim_grace_seconds",
+          "type": "i64"
+        },
+        {
+          "name": "kind",
+          "type": {
+            "defined": {
+              "name": "AuctionKind"
+            }
+          }
+        },
+        {
+          "name": "permitted_bidders",
+          "type": {
+            "vec": "pubkey"
+          }
+        },
+        {
+          "name": "estimate_high_usdc",
+          "type": "u64"
+        },
+        {
+          "name": "reserve_price",
+          "type": "u64"
         }
       ]
     },
@@ -417,6 +558,10 @@
         {
           "name": "amount",
           "type": "u64"
+        },
+        {
+          "name": "deposit_lamports",
+          "type": "u64"
         }
       ]
     },
@@ -456,6 +601,132 @@
           }
         }
       ]
+    },
+    {
+      "name": "recover_bid_in_tee",
+      "discriminator": [
+        13,
+        187,
+        135,
+        193,
+        243,
+        217,
+        146,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "bid",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  105,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "bid.auction_id",
+                "account": "Bid"
+              },
+              {
+                "kind": "account",
+                "path": "bid.bidder",
+                "account": "Bid"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bidder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "refund_bid",
+      "discriminator": [
+        171,
+        145,
+        79,
+        190,
+        16,
+        50,
+        10,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "auction",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bid",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  105,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              },
+              {
+                "kind": "account",
+                "path": "bidder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bidder",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
     },
     {
       "name": "settle_auction",
@@ -522,6 +793,84 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "slash_winner",
+      "discriminator": [
+        27,
+        19,
+        104,
+        179,
+        139,
+        199,
+        169,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "auction",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  117,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bid",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  105,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "auction.auction_id",
+                "account": "Auction"
+              },
+              {
+                "kind": "account",
+                "path": "bid.bidder",
+                "account": "Bid"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seller",
+          "writable": true
+        },
+        {
+          "name": "caller",
+          "docs": [
+            "Anyone can trigger slashing once the grace window has elapsed."
+          ],
+          "signer": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -553,6 +902,84 @@
     }
   ],
   "events": [
+    {
+      "name": "AuctionCreated",
+      "discriminator": [
+        133,
+        190,
+        194,
+        65,
+        172,
+        0,
+        70,
+        178
+      ]
+    },
+    {
+      "name": "AuctionSettled",
+      "discriminator": [
+        61,
+        151,
+        131,
+        170,
+        95,
+        203,
+        219,
+        147
+      ]
+    },
+    {
+      "name": "BidPlaced",
+      "discriminator": [
+        135,
+        53,
+        176,
+        83,
+        193,
+        69,
+        108,
+        61
+      ]
+    },
+    {
+      "name": "BidRecovered",
+      "discriminator": [
+        45,
+        126,
+        98,
+        105,
+        54,
+        28,
+        250,
+        240
+      ]
+    },
+    {
+      "name": "BidRefunded",
+      "discriminator": [
+        197,
+        100,
+        31,
+        186,
+        67,
+        28,
+        46,
+        103
+      ]
+    },
+    {
+      "name": "BidSlashed",
+      "discriminator": [
+        151,
+        115,
+        136,
+        75,
+        32,
+        56,
+        99,
+        5
+      ]
+    },
     {
       "name": "LotClaimed",
       "discriminator": [
@@ -630,8 +1057,83 @@
     },
     {
       "code": 6012,
+      "name": "NotSeller",
+      "msg": "Caller is not the auction seller."
+    },
+    {
+      "code": 6013,
+      "name": "NotBidder",
+      "msg": "Caller is not the original bidder."
+    },
+    {
+      "code": 6014,
       "name": "NoWinner",
       "msg": "Auction has no winner."
+    },
+    {
+      "code": 6015,
+      "name": "DepositTooLow",
+      "msg": "Bid deposit below the program minimum."
+    },
+    {
+      "code": 6016,
+      "name": "InvalidClaimGrace",
+      "msg": "Claim grace must be between MIN_CLAIM_GRACE_SECONDS and MAX_CLAIM_GRACE_SECONDS."
+    },
+    {
+      "code": 6017,
+      "name": "WinnerCannotRefund",
+      "msg": "Winner cannot refund — must call claim_lot or wait for slash window."
+    },
+    {
+      "code": 6018,
+      "name": "ClaimGraceNotElapsed",
+      "msg": "Claim grace window has not elapsed yet."
+    },
+    {
+      "code": 6019,
+      "name": "PaymentMintNotSupported",
+      "msg": "Auction payment_mint requires the other claim variant (claim_lot for SOL, claim_lot_spl for SPL)."
+    },
+    {
+      "code": 6020,
+      "name": "PaymentMintMismatch",
+      "msg": "Provided mint account does not match auction.payment_mint."
+    },
+    {
+      "code": 6021,
+      "name": "WrongSellerAta",
+      "msg": "Seller ATA owner does not match auction.seller."
+    },
+    {
+      "code": 6022,
+      "name": "PermittedBiddersExceedsCap",
+      "msg": "permitted_bidders length exceeds MAX_BIDDERS."
+    },
+    {
+      "code": 6023,
+      "name": "DuplicatePermittedBidder",
+      "msg": "permitted_bidders contains a duplicate pubkey."
+    },
+    {
+      "code": 6024,
+      "name": "UnpermittedBidder",
+      "msg": "Bid placed by a non-permitted bidder on a closed auction."
+    },
+    {
+      "code": 6025,
+      "name": "PermittedBidderSlotMissing",
+      "msg": "Closed-auction settle is missing a slot for a permitted bidder."
+    },
+    {
+      "code": 6026,
+      "name": "RecoverGraceNotElapsed",
+      "msg": "Recover-bid grace window has not elapsed yet."
+    },
+    {
+      "code": 6027,
+      "name": "DepositBelowMarketFloor",
+      "msg": "Bid deposit is below the program-enforced market floor (estimate_high_usdc × ratio × SOL/USDC)."
     }
   ],
   "types": [
@@ -709,6 +1211,50 @@
             "type": {
               "option": "u64"
             }
+          },
+          {
+            "name": "bid_deposit_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "claim_grace_seconds",
+            "type": "i64"
+          },
+          {
+            "name": "kind",
+            "type": {
+              "defined": {
+                "name": "AuctionKind"
+              }
+            }
+          },
+          {
+            "name": "permitted_bidders",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "estimate_high_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "reserve_price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AuctionKind",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "FirstPrice"
+          },
+          {
+            "name": "SecondPrice"
           }
         ]
       }
@@ -726,6 +1272,9 @@
           },
           {
             "name": "Claimed"
+          },
+          {
+            "name": "Slashed"
           }
         ]
       }
@@ -750,7 +1299,89 @@
           {
             "name": "timestamp",
             "type": "i64"
+          },
+          {
+            "name": "deposit_lamports",
+            "type": "u64"
           }
+        ]
+      }
+    },
+    {
+      "name": "AuctionCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "auction_id", "type": "u64" },
+          { "name": "seller", "type": "pubkey" },
+          { "name": "end_time", "type": "i64" },
+          { "name": "payment_mint", "type": "pubkey" },
+          { "name": "bid_deposit_lamports", "type": "u64" },
+          { "name": "estimate_high_usdc", "type": "u64" },
+          { "name": "reserve_price", "type": "u64" },
+          { "name": "kind_is_second_price", "type": "bool" },
+          { "name": "permitted_bidder_count", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "AuctionSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "auction_id", "type": "u64" },
+          { "name": "winner", "type": { "option": "pubkey" } },
+          { "name": "winning_bid", "type": { "option": "u64" } },
+          { "name": "eligible_bid_count", "type": "u8" },
+          { "name": "kind_is_second_price", "type": "bool" },
+          { "name": "reserve_price", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "BidPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "auction_id", "type": "u64" },
+          { "name": "bidder", "type": "pubkey" },
+          { "name": "bid_pda", "type": "pubkey" },
+          { "name": "deposit_lamports", "type": "u64" },
+          { "name": "timestamp", "type": "i64" }
+        ]
+      }
+    },
+    {
+      "name": "BidRecovered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "auction_id", "type": "u64" },
+          { "name": "bidder", "type": "pubkey" },
+          { "name": "recovered_after_seconds", "type": "i64" }
+        ]
+      }
+    },
+    {
+      "name": "BidRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "auction_id", "type": "u64" },
+          { "name": "bidder", "type": "pubkey" },
+          { "name": "deposit_lamports", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "BidSlashed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "auction_id", "type": "u64" },
+          { "name": "winner", "type": "pubkey" },
+          { "name": "seller", "type": "pubkey" },
+          { "name": "forfeited_lamports", "type": "u64" }
         ]
       }
     },

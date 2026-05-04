@@ -4,11 +4,23 @@
 # during the post-reveal window still see the result.
 #
 # Tunable via env:
+#   CYCLE_MODE          "demo" (default) — auto-post + auto-settle on a timer.
+#                       "live" — exit immediately and let real sellers drive
+#                       activity through the MCP server / public API.
 #   CYCLE_INTERVAL_SEC  total cycle period in seconds (default 600 = 10 min)
 #   CYCLE_DURATION_SEC  unused — auction duration is read from
 #                        scripts/seed-inventory.json (default 90s in repo)
 
 set -uo pipefail
+
+MODE=${CYCLE_MODE:-demo}
+if [ "$MODE" = "live" ]; then
+  echo "[cycle] CYCLE_MODE=live — auto-cycle disabled. Real sellers should"
+  echo "[cycle] post auctions via the MCP server (createAuction) or the"
+  echo "[cycle] /api/auctions feed. Sleeping forever to keep the container alive."
+  # `sleep infinity` so the process doesn't exit; entrypoint waits on it.
+  exec sleep infinity
+fi
 
 INTERVAL=${CYCLE_INTERVAL_SEC:-600}
 STATE_DIR=${SEALDEX_STATE_DIR:-/data/state}

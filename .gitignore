@@ -50,6 +50,13 @@ scripts/bidder-*-state.json
 scripts/bidder-*-stream.jsonl
 scripts/.anchor/
 
+# BYOK spawn registry — owner-scoped per-user data, never commit
+scripts/spawns/
+scripts/escrow-log.jsonl
+
+# Transient bootstrap artefacts
+Cargo.lock.backup
+
 # Video — keep the composition source, exclude generated audio/renders
 video/audio/
 video/renders/

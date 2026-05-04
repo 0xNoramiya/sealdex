@@ -14,7 +14,10 @@ import {
   getAuctionsByIds,
   getAuctionState,
   placeBid,
+  recoverBidInTee,
+  refundBid,
   settleAuction,
+  slashWinner,
 } from "./ops.js";
 
 const server = new Server(
@@ -146,6 +149,45 @@ const tools = [
     },
   },
   {
+    name: "refund_bid",
+    description:
+      "Loser refund. Closes the bidder's own bid PDA after settlement (any of Settled / Claimed / Slashed) and returns the deposit lamports. Rejected for the auction winner — they go through claim_lot or slash_winner.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        auctionId: { type: "string" },
+        bidderKeypairPath: { type: "string" },
+      },
+      required: ["auctionId", "bidderKeypairPath"],
+    },
+  },
+  {
+    name: "slash_winner",
+    description:
+      "Slash a no-show winner. Anyone may call once `end_time + claim_grace_seconds` has elapsed. Forfeits the winner's deposit to the seller and marks the auction Slashed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        auctionId: { type: "string" },
+        callerKeypairPath: { type: "string" },
+      },
+      required: ["auctionId", "callerKeypairPath"],
+    },
+  },
+  {
+    name: "recover_bid_in_tee",
+    description:
+      "Stuck-bid liveness fallback. After a 7-day grace, the bidder undelegates their own bid PDA from the TEE back to base (with the amount zeroed for privacy). Use refund_bid afterwards to reclaim the deposit. Only invoke when the TEE / settler is unreachable; under normal flow, settle handles the undelegation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        auctionId: { type: "string" },
+        bidderKeypairPath: { type: "string" },
+      },
+      required: ["auctionId", "bidderKeypairPath"],
+    },
+  },
+  {
     name: "end_time_from_now",
     description:
       "Helper: returns a unix timestamp `seconds` in the future, anchored to the cluster clock (not local), so create_auction won't fail with EndTimeInPast on machines with clock skew.",
@@ -186,6 +228,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         break;
       case "claim_lot":
         result = await claimLot(args);
+        break;
+      case "refund_bid":
+        result = await refundBid(args);
+        break;
+      case "slash_winner":
+        result = await slashWinner(args);
+        break;
+      case "recover_bid_in_tee":
+        result = await recoverBidInTee(args);
         break;
       case "end_time_from_now":
         result = { endTimeUnix: await endTimeFromNow(args.seconds) };

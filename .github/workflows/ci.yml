@@ -1,0 +1,99 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  program:
+    name: anchor build (sealdex_auction.so)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.85.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry + git + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Solana 2.3.13
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo build-sbf (program)
+        run: cargo build-sbf --manifest-path programs/sealdex-auction/Cargo.toml --tools-version v1.54
+
+  typescript:
+    name: tsc + next build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: yarn
+
+      - name: yarn install (root)
+        run: yarn install --frozen-lockfile
+
+      - name: yarn install (mcp-server)
+        run: cd mcp-server && yarn install --frozen-lockfile
+
+      - name: yarn install (agents)
+        run: |
+          cd agents/auctioneer && yarn install --frozen-lockfile
+          cd ../bidder && yarn install --frozen-lockfile
+          cd ../escrow && yarn install --frozen-lockfile
+
+      - name: yarn install (frontend)
+        run: cd frontend && yarn install --frozen-lockfile
+
+      - name: tsc --noEmit (mcp-server)
+        run: cd mcp-server && yarn tsc --noEmit
+
+      - name: tsc --noEmit (frontend)
+        run: cd frontend && yarn tsc --noEmit
+
+      - name: next build
+        run: cd frontend && yarn build
+        env:
+          NEXT_PUBLIC_SITE_URL: https://sealdex.fly.dev
+          # next build reads target/idl/sealdex_auction.json; the file is
+          # checked into the repo so we don't need to rebuild the program.
+          SEALDEX_IDL_PATH: ${{ github.workspace }}/target/idl/sealdex_auction.json
+
+  unit:
+    name: vitest (bidder + mcp-server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: yarn
+      - name: yarn install (bidder)
+        run: cd agents/bidder && yarn install --frozen-lockfile
+      - name: vitest (bidder)
+        run: cd agents/bidder && yarn vitest run --reporter=verbose
+      - name: yarn install (mcp-server)
+        run: cd mcp-server && yarn install --frozen-lockfile
+      - name: vitest (mcp-server)
+        run: cd mcp-server && yarn vitest run --reporter=verbose

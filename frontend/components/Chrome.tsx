@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { WalletConnectButton } from "./WalletConnectButton";
 
 type ActivePage =
   | "home"
@@ -84,6 +85,7 @@ export function TopBar({ active }: { active: ActivePage }) {
           <span className="ff-mono text-[11px] text-dim">
             enclave://us-east-1.sealdex
           </span>
+          <WalletConnectButton />
         </div>
 
         <button

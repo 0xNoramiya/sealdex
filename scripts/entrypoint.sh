@@ -63,7 +63,10 @@ PIDS+=($!)
 # Give frontend + bidders a moment to settle before the first cycle.
 sleep 6
 
-echo "[entrypoint] starting auto-cycle loop"
+# CYCLE_MODE=live skips auto-posting (cycle.sh self-noops). Demo mode posts
+# fresh auctions on a timer so judges see live activity even when no human
+# is sitting in the seller seat.
+echo "[entrypoint] starting cycle loop (CYCLE_MODE=${CYCLE_MODE:-demo})"
 /app/cycle.sh &
 PIDS+=($!)
 

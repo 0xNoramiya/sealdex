@@ -9,6 +9,8 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { IDL, PROGRAM_ID, BASE_RPC, baseConnection } from "../../mcp-server/src/client.js";
+import { getLogger } from "../../mcp-server/src/logger.js";
+import { captureException } from "../../mcp-server/src/sentry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
@@ -33,12 +35,16 @@ async function callPrivatePaymentsTransfer(
   amount: string,
   mint: string
 ) {
+  const log = getLogger("escrow");
   const apiBase = process.env.PRIVATE_PAYMENTS_API_BASE;
   const apiKey = process.env.PRIVATE_PAYMENTS_API_KEY;
   if (!apiBase || !apiKey) {
-    console.log(
-      `⚠ Private Payments API not configured — would transfer ${amount} (${mint}) from ${fromPubkey} → ${toPubkey}`
-    );
+    log.warn("private payments API not configured — stubbing transfer", {
+      from: fromPubkey,
+      to: toPubkey,
+      amount,
+      mint,
+    });
     return { stubbed: true };
   }
   const ctrl = new AbortController();
@@ -90,12 +96,15 @@ function decodeLotClaimedFromLog(
 }
 
 async function main() {
+  const log = getLogger("escrow");
   if (!existsSync(LOG_PATH)) writeFileSync(LOG_PATH, "");
 
   const conn = baseConnection();
-  console.log(
-    `🛡  escrow agent listening on ${BASE_RPC} for LotClaimed events from ${PROGRAM_ID.toBase58()}`
-  );
+  log.info("escrow listener starting", {
+    rpc: BASE_RPC,
+    programId: PROGRAM_ID.toBase58(),
+    logPath: LOG_PATH,
+  });
 
   conn.onLogs(
     PROGRAM_ID,
@@ -112,7 +121,7 @@ async function main() {
         amount: event.amount.toString(),
         paymentMint: event.paymentMint.toBase58(),
       };
-      console.log("📥 LotClaimed:", record);
+      log.info("LotClaimed observed", record);
       appendFileSync(LOG_PATH, JSON.stringify(record) + "\n");
       callPrivatePaymentsTransfer(
         record.winner,
@@ -120,8 +129,18 @@ async function main() {
         record.amount,
         record.paymentMint
       )
-        .then((r) => console.log("💸 PP transfer:", r))
-        .catch((e) => console.error("PP transfer failed:", e));
+        .then((r) => log.info("private-payments transfer ok", { result: r, signature: record.signature }))
+        .catch((e) => {
+          log.error("private-payments transfer failed", {
+            err: e,
+            signature: record.signature,
+          });
+          captureException(e, {
+            op: "escrow.privatePayments",
+            auctionId: record.auctionId,
+            signature: record.signature,
+          });
+        });
     },
     "confirmed"
   );
@@ -131,6 +150,8 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("escrow agent failed:", e);
+  const log = getLogger("escrow");
+  log.fatal("escrow fatal", { err: e });
+  captureException(e, { op: "escrow.main" });
   process.exit(1);
 });

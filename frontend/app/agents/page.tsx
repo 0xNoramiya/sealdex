@@ -154,6 +154,17 @@ export default function AgentsPage() {
               runtime. All three reach the same on-chain entry points and
               the same public registry feed.
             </p>
+            <div className="mt-6 flex items-center gap-3">
+              <a
+                href="/spawn"
+                className="px-4 py-2 text-[13px] bg-ink text-paper rounded hover:opacity-90"
+              >
+                Spawn an agent →
+              </a>
+              <span className="text-[12px] text-dim">
+                Bring your own LLM key + Solana keypair, no terminal needed.
+              </span>
+            </div>
           </div>
 
           {/* Shared prerequisites */}

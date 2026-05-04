@@ -9,6 +9,7 @@ import {
   shortPubkey,
   shortSig,
 } from "@/lib/explorer";
+import { useLotStream } from "@/lib/use-lot-stream";
 import type { LotResponse } from "../api/lot/route";
 
 /* ─── Mock bids (used only when no live data is available) ─── */
@@ -478,7 +479,10 @@ function TickerRow({ lines }: { lines: { id: string; text: string }[] }) {
 
 export default function Page() {
   const startMs = 8000;
-  const [lot, setLot] = useState<LotResponse | null>(null);
+  // SSE-first lot stream with auto-fallback to polling. Replaces the old
+  // 2s-polling effect — at 100 concurrent observers that was ~3000 req/min;
+  // SSE is one connection per visitor + push-on-change.
+  const { lot, source: streamSource } = useLotStream();
   const [anchor, setAnchor] = useState<{
     cluster: number;
     local: number;
@@ -491,29 +495,11 @@ export default function Page() {
   const [showSettlement, setShowSettlement] = useState(false);
   const startedAt = useRef<number | null>(null);
 
-  /* Poll /api/lot for live program data. Cluster-time anchor is captured
-   * on every successful response so the countdown is independent of WSL clock skew. */
+  // Re-anchor cluster time on every fresh lot payload so the countdown
+  // stays correct across SSE pushes and polling fallback alike.
   useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const r = await fetch("/api/lot", { cache: "no-store" });
-        if (!r.ok || cancelled) return;
-        const data: LotResponse = await r.json();
-        if (cancelled) return;
-        setLot(data);
-        setAnchor({ cluster: data.clusterUnix, local: Date.now() });
-      } catch {
-        /* ignore — keep last good state */
-      }
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+    if (lot) setAnchor({ cluster: lot.clusterUnix, local: Date.now() });
+  }, [lot?.clusterUnix]);
 
   /* Local 200ms tick advances the cluster-anchored countdown smoothly between fetches. */
   useEffect(() => {
@@ -615,7 +601,10 @@ export default function Page() {
   const meta: LotMeta = metaFromLot(lot);
 
   return (
-    <div className="min-h-screen flex flex-col relative paper-bg">
+    <div
+      className="min-h-screen flex flex-col relative paper-bg"
+      data-stream-source={streamSource}
+    >
       <TopBar active="sales" />
 
       {/* ─── Sale breadcrumb / sale band ─── */}
